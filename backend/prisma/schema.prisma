@@ -1,0 +1,311 @@
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url = env("LOCAL_DB_URL")
+}
+
+// ─── ENUMS ──────────────────────────────────────────
+
+enum Role {
+  USER
+  WORKER
+  ADMIN
+}
+
+enum WorkerStatus {
+  provisional
+  verified
+  suspended
+  banned
+}
+
+enum SkillBadge {
+  skill_tested
+  verified_by_experience
+  formally_certified
+}
+
+enum BookingStatus {
+  pending
+  accepted
+  in_progress
+  completed
+  confirmed
+  disputed
+  cancelled
+}
+
+enum EscrowStatus {
+  held
+  released
+  refunded
+  split
+}
+
+enum DisputeOutcome {
+  pending
+  released_to_worker
+  refunded_to_user
+  split
+}
+
+enum RecipientType {
+  user
+  worker
+}
+
+enum SenderRole {
+  user
+  worker
+}
+
+// ─── MODELS ─────────────────────────────────────────
+
+// Customers — phone + JWT only, no Aadhaar
+model User {
+  id          String   @id @default(uuid())
+  phone       String   @unique
+  name        String?
+  city        String?
+  bookerScore Float    @default(5.0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt         // ✅ added
+
+  bookings     Booking[]
+  reviews      Review[]
+  favourites   Favourite[]
+  chatMessages ChatMessage[]             // ✅ added
+}
+
+// Service providers — phone + JWT + Aadhaar
+model Worker {
+  id              String       @id @default(uuid())
+  phone           String       @unique
+  name            String
+  city            String
+  profilePhoto    String?                    // ✅ added — S3 URL
+  aadhaarVerified Boolean      @default(false)
+  policeVerified  Boolean      @default(false)  // ✅ added
+  status          WorkerStatus @default(provisional)
+  avgRating       Float        @default(0.0)
+  totalJobs       Int          @default(0)
+  completionRate  Float        @default(100.0)
+  isAvailable     Boolean      @default(false)
+  serviceRadius   Int          @default(10)      // ✅ added — km
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt        // ✅ added
+
+  skills       WorkerSkill[]
+  bookings     Booking[]
+  reviews      Review[]
+  earnings     WorkerEarning[]
+  favouritedBy Favourite[]
+  chatMessages ChatMessage[]              // ✅ added
+}
+
+// Temporary OTP — deleted immediately after verify
+model OtpVerification {
+  id        String   @id @default(uuid())
+  phone     String
+  otp       String                         // 🔐 store bcrypt hashed
+  role      Role                            // ✅ enum not string
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  // ✅ verified removed — delete record on verify instead
+
+  @@unique([phone, role])                  // ✅ one OTP per phone per role
+  @@index([phone])
+}
+
+// Hierarchical — parent = Plumbing, child = Tap repair ₹250
+model ServiceCategory {
+  id         String   @id @default(uuid())
+  parentId   String?
+  name       String
+  fixedPrice Float?
+  iconUrl    String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt          // ✅ added
+
+  parent   ServiceCategory?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children ServiceCategory[] @relation("CategoryTree")
+  skills   WorkerSkill[]
+  bookings Booking[]
+}
+
+// One row per skill per worker — unique pair enforced
+model WorkerSkill {
+  id         String     @id @default(uuid())
+  workerId   String
+  categoryId String
+  badge      SkillBadge
+  verifiedAt DateTime   @default(now())
+
+  worker   Worker          @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  category ServiceCategory @relation(fields: [categoryId], references: [id])
+
+  @@unique([workerId, categoryId])
+}
+
+// Central table — entire job lifecycle lives here
+model Booking {
+  id            String        @id @default(uuid())
+  userId        String
+  workerId      String?
+  categoryId    String
+  status        BookingStatus @default(pending)
+  address       String
+  lat           Float?
+  lng           Float?
+  problemDesc   String?
+  problemPhoto  String?                    // S3 URL
+  proofPhoto    String?                    // S3 URL — worker uploads on completion
+  otpCode       String?
+  otpVerified   Boolean       @default(false)
+  basePrice     Float
+  finalPrice    Float?                     // set if price change approved
+  isInspection  Boolean       @default(false)  // ✅ added
+  inspectionFee Float?                     // ✅ added — ₹99 for inspection jobs
+  scheduledAt   DateTime?
+  acceptedAt    DateTime?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  confirmedAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt        // ✅ added
+
+  user         User              @relation(fields: [userId], references: [id])
+  worker       Worker?           @relation(fields: [workerId], references: [id])
+  category     ServiceCategory   @relation(fields: [categoryId], references: [id])
+  escrow       EscrowTransaction?
+  dispute      Dispute?
+  review       Review?
+  earning      WorkerEarning?
+  chatMessages ChatMessage[]              // ✅ added
+}
+
+// In-app chat — stored per booking, never exposes phone numbers
+model ChatMessage {                        // ✅ new model
+  id         String     @id @default(uuid())
+  bookingId  String
+  senderId   String
+  senderRole SenderRole
+  message    String
+  isRead     Boolean    @default(false)
+  sentAt     DateTime   @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  user    User?    @relation(fields: [senderId], references: [id])
+  worker  Worker?  @relation(fields: [senderId], references: [id])
+
+  @@index([bookingId])
+}
+
+// One per booking — money trail
+model EscrowTransaction {
+  id           String       @id @default(uuid())
+  bookingId    String       @unique
+  razorpayId   String       @unique
+  amount       Float
+  status       EscrowStatus @default(held)
+  workerAmount Float?
+  userRefund   Float?
+  releasedAt   DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt       // ✅ added
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+}
+
+// Raised by customer — escrow freezes until resolved
+model Dispute {
+  id             String         @id @default(uuid())
+  bookingId      String         @unique
+  reason         String
+  userEvidence   String[]
+  workerResponse String?
+  workerEvidence String[]
+  adminNote      String?
+  outcome        DisputeOutcome @default(pending)
+  resolvedAt     DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt     // ✅ added
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+}
+
+// One per confirmed booking — enforce with @unique on bookingId
+model Review {
+  id          String   @id @default(uuid())
+  bookingId   String   @unique
+  userId      String
+  workerId    String
+  rating      Int                  // 1–5, validated in Zod not Prisma
+  punctuality Int?
+  quality     Int?
+  behaviour   Int?
+  value       Int?
+  comment     String?
+  tags        String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt    // ✅ added
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+  worker  Worker  @relation(fields: [workerId], references: [id])
+}
+
+// Many-to-many — composite PK prevents duplicates
+model Favourite {
+  userId    String
+  workerId  String
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  worker Worker @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@id([userId, workerId])
+}
+
+// One per completed booking — full earnings audit trail
+model WorkerEarning {
+  id          String    @id @default(uuid())
+  workerId    String
+  bookingId   String    @unique
+  grossAmount Float
+  commission  Float
+  netAmount   Float
+  upiRef      String?
+  paidAt      DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt     // ✅ added
+
+  worker  Worker  @relation(fields: [workerId], references: [id])
+  booking Booking @relation(fields: [bookingId], references: [id])
+}
+
+// Every push/WhatsApp notification — audit log
+model Notification {
+  id            String        @id @default(uuid())
+  recipientId   String
+  recipientType RecipientType
+  type          String
+  title         String
+  body          String
+  isRead        Boolean       @default(false)
+  sentAt        DateTime      @default(now())
+}
+
+// Master tag list — seeded once, referenced by Review.tags[]
+model ReviewTag {
+  id       String  @id @default(uuid())
+  label    String  @unique
+  slug     String  @unique
+  type     String  // "positive" | "negative"
+  isActive Boolean @default(true)
+}
