@@ -12,6 +12,7 @@ import {
 } from './flowSlice';
 import { loginSuccess } from './authSlice';
 import { sendOTP as firebaseSendOTP, verifyOTP as firebaseVerifyOTP } from '../firebase/auth';
+import api from '../utils/api';
 
 export function useFlow() {
   const dispatch = useDispatch();
@@ -19,7 +20,7 @@ export function useFlow() {
   const flow = useSelector(s => s.flow);
   const auth = useSelector(s => s.auth);
 
-  // ── Resend countdown ────────────────────────────────────────
+  // ── Resend countdo wn ────────────────────────────────────────
   useEffect(() => {
     if (flow.step !== 'otp' || flow.resendTimer <= 0) return;
     const id = setInterval(() => dispatch(tickResend()), 1000);
@@ -54,12 +55,21 @@ export function useFlow() {
     dispatch(setLoading(true));
     try {
       const user = await firebaseVerifyOTP(window.confirmationResult, otp);
+      
+      // Call backend API to initialize user
+      await api.post('/auth/user-init', {
+        firebaseUid: user.uid,
+        role: auth.role,
+        phone: flow.phone,
+      });
+
       dispatch(loginSuccess({ phone: flow.phone, uid: user.uid }));
 
       if (auth.role === 'USER')        navigate('/dashboard');
       else if (auth.role === 'WORKER') dispatch(setStep('profile'));
       else if (auth.role === 'ADMIN')  navigate('/admin');
     } catch (err) {
+      console.error("OTP verification error:", err);
       dispatch(setOtpError('Invalid OTP. Please try again.'));
       dispatch(setOtpShake(true));
       setTimeout(() => dispatch(setOtpShake(false)), 600);

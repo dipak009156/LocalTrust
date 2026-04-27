@@ -8,3 +8,4 @@ app.use(express.urlencoded({ extended: true }));
 const morgan = require('morgan');
 app.use(morgan('dev'));
 
+app.use('/api/auth', require('./routes/authRoute'));
