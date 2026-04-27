@@ -66,13 +66,6 @@ const requireAdmin = (req, res, next) => {
     next();
 }
 
-const requireWorker = (req, res, next) => {
-    if (req.user.role !== 'WORKER') {
-        return res.status(403).json({ message: 'Forbidden' });
-    }
-    next();
-}
-
 const requireVerifiedWorker = (req, res, next) => {
     if (req.user.role !== 'WORKER') {
         return res.status(403).json({ message: 'Forbidden' });
