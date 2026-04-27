@@ -200,8 +200,8 @@ model ChatMessage {                        // ✅ new model
   sentAt     DateTime   @default(now())
 
   booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  user    User?    @relation(fields: [senderId], references: [id])
-  worker  Worker?  @relation(fields: [senderId], references: [id])
+  user    User?    @relation(fields: [senderId], references: [id], map: "ChatMessage_senderId_user_fkey")
+  worker  Worker?  @relation(fields: [senderId], references: [id], map: "ChatMessage_senderId_worker_fkey")
 
   @@index([bookingId])
 }
