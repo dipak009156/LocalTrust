@@ -5,7 +5,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url = env("LOCAL_DB_URL")
+  url      = env("LOCAL_DB_URL")
 }
 
 // ─── ENUMS ──────────────────────────────────────────
@@ -65,72 +65,75 @@ enum SenderRole {
 
 // ─── MODELS ─────────────────────────────────────────
 
-// Customers — phone + JWT only, no Aadhaar
+// Customers — phone OTP via Firebase, no Aadhaar
 model User {
   id          String   @id @default(uuid())
+  firebaseUid String   @unique              // Firebase UID — auth lookup key
   phone       String   @unique
   name        String?
   city        String?
   bookerScore Float    @default(5.0)
   createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt         // ✅ added
+  updatedAt   DateTime @updatedAt
 
-  bookings     Booking[]
-  reviews      Review[]
-  favourites   Favourite[]
-  chatMessages ChatMessage[]             // ✅ added
+  bookings      Booking[]
+  reviews       Review[]
+  favourites    Favourite[]
+  notifications Notification[]
+  chatMessages  ChatMessage[]
 }
 
-// Service providers — phone + JWT + Aadhaar
+// Service providers — phone OTP + Aadhaar KYC
 model Worker {
   id              String       @id @default(uuid())
+  firebaseUid     String       @unique              // Firebase UID — auth lookup key
   phone           String       @unique
-  name            String
-  city            String
-  profilePhoto    String?                    // ✅ added — S3 URL
+  name            String?                           // nullable — filled in profile step after OTP
+  city            String?
+  profilePhoto    String?                           // Firebase Storage URL
+  homeLat         Float?                            // home location — used for Haversine matching
+  homeLng         Float?
+  serviceRadius   Int          @default(10)         // km — how far worker travels
+  aadhaarFront    String?                           // Firebase Storage URL
+  aadhaarBack     String?                           // Firebase Storage URL
+  aadhaarSelfie   String?                           // Firebase Storage URL
   aadhaarVerified Boolean      @default(false)
-  policeVerified  Boolean      @default(false)  // ✅ added
+  policeVerified  Boolean      @default(false)
   status          WorkerStatus @default(provisional)
   avgRating       Float        @default(0.0)
   totalJobs       Int          @default(0)
   completionRate  Float        @default(100.0)
   isAvailable     Boolean      @default(false)
-  serviceRadius   Int          @default(10)      // ✅ added — km
   createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt        // ✅ added
+  updatedAt       DateTime     @updatedAt
 
-  skills       WorkerSkill[]
-  bookings     Booking[]
-  reviews      Review[]
-  earnings     WorkerEarning[]
-  favouritedBy Favourite[]
-  chatMessages ChatMessage[]              // ✅ added
+  skills        WorkerSkill[]
+  bookings      Booking[]
+  reviews       Review[]
+  earnings      WorkerEarning[]
+  favouritedBy  Favourite[]
+  notifications Notification[]
+  chatMessages  ChatMessage[]
 }
 
-// Temporary OTP — deleted immediately after verify
-model OtpVerification {
+// Platform operators — created manually in DB, never self-registered
+model Admin {
   id        String   @id @default(uuid())
-  phone     String
-  otp       String                         // 🔐 store bcrypt hashed
-  role      Role                            // ✅ enum not string
-  expiresAt DateTime
+  phone     String   @unique
+  name      String
   createdAt DateTime @default(now())
-  // ✅ verified removed — delete record on verify instead
-
-  @@unique([phone, role])                  // ✅ one OTP per phone per role
-  @@index([phone])
 }
 
-// Hierarchical — parent = Plumbing, child = Tap repair ₹250
+// Hierarchical — parent = Plumbing, child = Tap Repair ₹250
 model ServiceCategory {
   id         String   @id @default(uuid())
   parentId   String?
   name       String
-  fixedPrice Float?
+  fixedPrice Float?                        // only set on leaf (child) categories
   iconUrl    String?
   isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt          // ✅ added
+  updatedAt  DateTime @updatedAt
 
   parent   ServiceCategory?  @relation("CategoryTree", fields: [parentId], references: [id])
   children ServiceCategory[] @relation("CategoryTree")
@@ -144,6 +147,7 @@ model WorkerSkill {
   workerId   String
   categoryId String
   badge      SkillBadge
+  testScore  Int?                          // percentage score from the 20-question skill test
   verifiedAt DateTime   @default(now())
 
   worker   Worker          @relation(fields: [workerId], references: [id], onDelete: Cascade)
@@ -154,30 +158,31 @@ model WorkerSkill {
 
 // Central table — entire job lifecycle lives here
 model Booking {
-  id            String        @id @default(uuid())
-  userId        String
-  workerId      String?
-  categoryId    String
-  status        BookingStatus @default(pending)
-  address       String
-  lat           Float?
-  lng           Float?
-  problemDesc   String?
-  problemPhoto  String?                    // S3 URL
-  proofPhoto    String?                    // S3 URL — worker uploads on completion
-  otpCode       String?
-  otpVerified   Boolean       @default(false)
-  basePrice     Float
-  finalPrice    Float?                     // set if price change approved
-  isInspection  Boolean       @default(false)  // ✅ added
-  inspectionFee Float?                     // ✅ added — ₹99 for inspection jobs
-  scheduledAt   DateTime?
-  acceptedAt    DateTime?
-  startedAt     DateTime?
-  completedAt   DateTime?
-  confirmedAt   DateTime?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt        // ✅ added
+  id           String        @id @default(uuid())
+  userId       String
+  workerId     String?
+  categoryId   String
+  status       BookingStatus @default(pending)
+  address      String
+  lat          Float?
+  lng          Float?
+  problemDesc  String?
+  problemPhoto String?                     // Firebase Storage URL — customer uploads
+  proofPhoto   String?                     // Firebase Storage URL — worker uploads on completion
+  otpCode      String?                     // check-in OTP shown to customer
+  otpVerified  Boolean       @default(false)
+  basePrice    Float
+  finalPrice   Float?                      // set only if price adjustment was approved
+  isInspection Boolean       @default(false)
+  inspectionFee Float?                     // ₹99 for inspection-only jobs
+  scheduledAt  DateTime?
+  acceptedAt   DateTime?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  confirmedAt  DateTime?
+  cancelledAt  DateTime?                   // set on cancellation
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 
   user         User              @relation(fields: [userId], references: [id])
   worker       Worker?           @relation(fields: [workerId], references: [id])
@@ -186,74 +191,81 @@ model Booking {
   dispute      Dispute?
   review       Review?
   earning      WorkerEarning?
-  chatMessages ChatMessage[]              // ✅ added
+  chatMessages ChatMessage[]
+  notifications Notification[]
+
+  @@index([userId])
+  @@index([workerId])
+  @@index([status])
 }
 
-// In-app chat — stored per booking, never exposes phone numbers
-model ChatMessage {                        // ✅ new model
+// In-app chat — stored per booking, never exposes raw phone numbers
+model ChatMessage {
   id         String     @id @default(uuid())
   bookingId  String
-  senderId   String
   senderRole SenderRole
+  userId     String?                       // set when senderRole = user
+  workerId   String?                       // set when senderRole = worker
   message    String
   isRead     Boolean    @default(false)
   sentAt     DateTime   @default(now())
 
   booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  user    User?    @relation(fields: [senderId], references: [id], map: "ChatMessage_senderId_user_fkey")
-  worker  Worker?  @relation(fields: [senderId], references: [id], map: "ChatMessage_senderId_worker_fkey")
+  user    User?   @relation(fields: [userId], references: [id])
+  worker  Worker? @relation(fields: [workerId], references: [id])
 
   @@index([bookingId])
 }
 
-// One per booking — money trail
+// One per booking — full Razorpay payment trail
 model EscrowTransaction {
-  id           String       @id @default(uuid())
-  bookingId    String       @unique
-  razorpayId   String       @unique
-  amount       Float
-  status       EscrowStatus @default(held)
-  workerAmount Float?
-  userRefund   Float?
-  releasedAt   DateTime?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt       // ✅ added
+  id               String       @id @default(uuid())
+  bookingId        String       @unique
+  razorpayOrderId  String       @unique    // created when booking is confirmed
+  razorpayPaymentId String?     @unique    // set after customer completes payment
+  amount           Float
+  status           EscrowStatus @default(held)
+  workerAmount     Float?                  // set on split or release
+  userRefund       Float?                  // set on split or refund
+  releasedAt       DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
   booking Booking @relation(fields: [bookingId], references: [id])
 }
 
-// Raised by customer — escrow freezes until resolved
+// Raised by customer — escrow freezes until admin resolves
 model Dispute {
   id             String         @id @default(uuid())
   bookingId      String         @unique
   reason         String
-  userEvidence   String[]
+  userEvidence   String[]                  // array of Firebase Storage URLs / text
   workerResponse String?
   workerEvidence String[]
   adminNote      String?
   outcome        DisputeOutcome @default(pending)
   resolvedAt     DateTime?
   createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt     // ✅ added
+  updatedAt      DateTime       @updatedAt
 
   booking Booking @relation(fields: [bookingId], references: [id])
 }
 
-// One per confirmed booking — enforce with @unique on bookingId
+// One per confirmed booking — enforced by @unique on bookingId
 model Review {
   id          String   @id @default(uuid())
   bookingId   String   @unique
   userId      String
   workerId    String
-  rating      Int                  // 1–5, validated in Zod not Prisma
-  punctuality Int?
+  rating      Int                           // overall 1–5, validated in Zod
+  punctuality Int?                          // sub-dimension 1–5
   quality     Int?
   behaviour   Int?
   value       Int?
   comment     String?
-  tags        String[]
+  tags        String[]                      // slugs from ReviewTag master list
   createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt    // ✅ added
+  updatedAt   DateTime @updatedAt
 
   booking Booking @relation(fields: [bookingId], references: [id])
   user    User    @relation(fields: [userId], references: [id])
@@ -278,34 +290,41 @@ model WorkerEarning {
   workerId    String
   bookingId   String    @unique
   grossAmount Float
-  commission  Float
-  netAmount   Float
-  upiRef      String?
+  commission  Float                         // platform cut (e.g. 15%)
+  netAmount   Float                         // grossAmount - commission
+  upiRef      String?                       // Razorpay payout reference
   paidAt      DateTime?
   createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt     // ✅ added
+  updatedAt   DateTime  @updatedAt
 
   worker  Worker  @relation(fields: [workerId], references: [id])
   booking Booking @relation(fields: [bookingId], references: [id])
 }
 
-// Every push/WhatsApp notification — audit log
+// Every SMS / push notification — full audit log
 model Notification {
   id            String        @id @default(uuid())
   recipientId   String
   recipientType RecipientType
-  type          String
+  bookingId     String?                     // optional — link to triggering booking
+  type          String                      // e.g. "booking_accepted", "dispute_raised"
   title         String
   body          String
   isRead        Boolean       @default(false)
   sentAt        DateTime      @default(now())
+
+  booking Booking? @relation(fields: [bookingId], references: [id])
+  user    User?    @relation(fields: [recipientId], references: [id], map: "Notification_recipientId_user_fkey")
+  worker  Worker?  @relation(fields: [recipientId], references: [id], map: "Notification_recipientId_worker_fkey")
+
+  @@index([recipientId])
 }
 
 // Master tag list — seeded once, referenced by Review.tags[]
 model ReviewTag {
   id       String  @id @default(uuid())
-  label    String  @unique
-  slug     String  @unique
-  type     String  // "positive" | "negative"
+  label    String  @unique               // "On Time", "Clean Work"
+  slug     String  @unique               // "on_time", "clean_work"
+  type     String                        // "positive" | "negative"
   isActive Boolean @default(true)
 }
