@@ -5,7 +5,7 @@ export default function Header() {
 
   return (
     <header className="sticky top-0 z-50 bg-white border-b border-gray-100 shadow-sm">
-      <nav className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+      <nav className="max-w-7xl mx-auto px-6 lg:px-8 h-16 md:h-20 flex items-center justify-between">
         <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
           <div className="w-8 h-8 bg-blue-700 rounded-lg flex items-center justify-center font-bold text-white text-xl">T</div>
           <span className="font-bold text-xl tracking-tight text-blue-900 uppercase">TrustWork</span>

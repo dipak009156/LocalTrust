@@ -1,12 +1,12 @@
 export default function Footer() {
   return (
-    <footer className="bg-white py-12 border-t border-gray-100">
-      <div className="max-w-7xl mx-auto px-6 grid md:grid-cols-3 gap-12 items-center">
-        <div className="flex items-center gap-2">
+    <footer className="bg-white py-10 md:py-12 border-t border-gray-100">
+      <div className="max-w-7xl mx-auto px-6 lg:px-8 flex flex-col md:grid md:grid-cols-3 gap-8 md:gap-12 items-center">
+        <div className="flex items-center gap-2 justify-center md:justify-start">
           <div className="w-6 h-6 bg-blue-700 rounded-md"></div>
           <span className="font-bold text-gray-900 tracking-tight">TRUSTWORK</span>
         </div>
-        <div className="flex justify-center">
+        <div className="flex justify-center w-full">
           <a
             href="https://wa.me/91XXXXXXXXXX"
             className="bg-green-500 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-green-600 transition-all shadow-lg shadow-green-100"
@@ -17,7 +17,7 @@ export default function Footer() {
             WhatsApp Support: 99123 45678
           </a>
         </div>
-        <p className="text-xs text-gray-400 text-right md:text-right">© 2026 TrustWork India. v1.2</p>
+        <p className="text-xs text-gray-400 text-center md:text-right w-full">© 2026 TrustWork India. v1.2</p>
       </div>
     </footer>
   )

@@ -24,15 +24,15 @@ export default function Features() {
   ]
 
   return (
-    <section className="max-w-7xl mx-auto px-6 py-24">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+    <section className="max-w-7xl mx-auto px-6 lg:px-8 py-16 md:py-24">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 md:gap-8">
         {features.map((feature, index) => (
           <div
             key={index}
-            className={`${feature.bg} p-10 rounded-3xl border ${feature.border} shadow-sm hover:shadow-xl transition-shadow`}
+            className={`${feature.bg} p-6 sm:p-8 md:p-10 rounded-2xl md:rounded-3xl border ${feature.border} shadow-sm hover:shadow-xl transition-shadow`}
           >
-            <div className="text-3xl mb-6">{feature.emoji}</div>
-            <h3 className="text-xl font-bold mb-4">{feature.title}</h3>
+            <div className="text-2xl sm:text-3xl mb-4 sm:mb-6">{feature.emoji}</div>
+            <h3 className="text-lg sm:text-xl font-bold mb-2 sm:mb-4">{feature.title}</h3>
             <p className="text-gray-600 leading-relaxed">{feature.description}</p>
           </div>
         ))}
