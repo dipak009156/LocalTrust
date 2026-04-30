@@ -1,5 +1,5 @@
 import { useRef, useEffect } from 'react';
-import { useFlow } from '../../store/useFlow';
+import { useFlow, DEMO_OTP } from '../../store/useFlow';
 
 export default function OtpStep() {
   const { phone, otpDigits, otpError, otpShake, loading,
@@ -22,8 +22,14 @@ export default function OtpStep() {
     }
   };
 
+  // Auto-fill demo OTP
+  const fillDemoOtp = () => {
+    DEMO_OTP.split('').forEach((digit, i) => handleOtpInput(digit, i));
+    setTimeout(() => verifyOTP(), 100);
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div>
         <button onClick={() => setStep('phone')} className="flex items-center gap-1 text-slate-400 hover:text-slate-700 text-sm font-semibold mb-4 transition-colors">
           ← Back

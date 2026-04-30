@@ -8,8 +8,6 @@ import { setRole } from './store/authSlice';
 import { resetFlow } from './store/flowSlice';
 import { store } from './store/store';
 
-import MobileLayout from './components/MobileLayout';
-import LoginOTP from './components/customer/LoginOTP';
 import Home from './components/customer/Home';
 import Category from './components/customer/Category';
 import BookingConfirm from './components/customer/BookingConfirm';
@@ -88,9 +86,7 @@ export default function App() {
           path="/login"
           element={
             <RoleBootstrap role="USER">
-              <MobileLayout>
-                <LoginOTP />
-              </MobileLayout>
+              <LoginPage />
             </RoleBootstrap>
           }
         />

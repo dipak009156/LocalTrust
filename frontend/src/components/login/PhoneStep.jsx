@@ -1,9 +1,8 @@
-import { useFlow } from '../../store/useFlow';
+import { useFlow, DEMO_PHONE, DEMO_OTP } from '../../store/useFlow';
 
 export default function PhoneStep() {
   const { phone, phoneValid, phoneError, loading, role,
           setPhone, validatePhone, sendOTP } = useFlow();
-
 
   const HEADINGS = {
     USER:   { title: 'Welcome to TrustWork', sub: 'Enter your mobile number to continue' },
@@ -13,7 +12,7 @@ export default function PhoneStep() {
   const heading = HEADINGS[role] ?? HEADINGS.USER;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-extrabold text-slate-900 mb-1">{heading.title}</h1>
         <p className="text-slate-500 text-sm">{heading.sub}</p>
@@ -46,7 +45,7 @@ export default function PhoneStep() {
           ${phoneValid ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-100' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
       >
         {loading && <Spinner />}
-        {loading ? 'Sending OTP...' : 'Continue'}
+        {loading ? 'Sending OTP...' : 'Continue →'}
       </button>
     </div>
   );
