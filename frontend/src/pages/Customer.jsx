@@ -1,10 +1,10 @@
 import { Outlet } from 'react-router-dom';
-import MobileLayout from '../components/MobileLayout';
+import ResponsiveLayout from '../components/layout/ResponsiveLayout';
 
 export default function Customer() {
   return (
-    <MobileLayout>
+    <ResponsiveLayout role="customer">
       <Outlet />
-    </MobileLayout>
+    </ResponsiveLayout>
   );
 }

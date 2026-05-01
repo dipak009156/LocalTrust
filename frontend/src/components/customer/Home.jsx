@@ -15,7 +15,7 @@ export default function Home() {
   ];
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 pb-20 relative">
+    <div className="flex flex-col h-full bg-gray-50 pb-20 lg:pb-0 relative">
       {/* Header */}
       <div className="bg-white px-6 py-5 sticky top-0 z-10 border-b border-gray-100">
         <div className="flex justify-between items-center mb-4">
@@ -42,7 +42,7 @@ export default function Home() {
         <div className="flex justify-between items-end mb-4">
           <h2 className="text-xl font-extrabold text-gray-900">Categories</h2>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {categories.map((cat) => (
             <Link key={cat.id} to={`/customer/category/${cat.id}`} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-start gap-3 hover:border-blue-700 transition-colors">
               <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl ${cat.color}`}>

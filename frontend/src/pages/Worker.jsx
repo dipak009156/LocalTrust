@@ -1,13 +1,13 @@
 import { Outlet } from 'react-router-dom';
-import MobileLayout from '../components/MobileLayout';
+import ResponsiveLayout from '../components/layout/ResponsiveLayout';
 import { WorkerProvider } from '../context/WorkerContext';
 
 export default function Worker() {
   return (
     <WorkerProvider>
-      <MobileLayout>
+      <ResponsiveLayout role="worker">
         <Outlet />
-      </MobileLayout>
+      </ResponsiveLayout>
     </WorkerProvider>
   );
 }
