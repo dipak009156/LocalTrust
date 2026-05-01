@@ -80,6 +80,9 @@ export default function LoginPage() {
           <span className="text-blue-600 font-semibold cursor-pointer">Privacy Policy</span>
         </p>
       </div>
+
+      {/* Global reCAPTCHA container for Firebase Auth */}
+      <div id="recaptcha-container"></div>
     </div>
   );
 }

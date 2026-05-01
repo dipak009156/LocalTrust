@@ -3,22 +3,33 @@ import { createSlice } from '@reduxjs/toolkit';
 const authSlice = createSlice({
   name: 'auth',
   initialState: {
-    role: null,         // 'USER' | 'WORKER' | 'ADMIN'
-    user: null,         // { phone, name, city, ... }
-    isAuthenticated: false,
+    role: localStorage.getItem('role') || null,
+    user: JSON.parse(localStorage.getItem('user')) || null,
+    token: localStorage.getItem('token') || null,
+    isAuthenticated: !!localStorage.getItem('token'),
   },
   reducers: {
     setRole(state, action) {
       state.role = action.payload;
+      localStorage.setItem('role', action.payload);
     },
     loginSuccess(state, action) {
-      state.user = action.payload;
+      const { user, token, role } = action.payload;
+      state.user = user;
+      state.token = token;
+      state.role = role || state.role;
       state.isAuthenticated = true;
+      
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(user));
+      if (role) localStorage.setItem('role', role);
     },
     logout(state) {
       state.role = null;
       state.user = null;
+      state.token = null;
       state.isAuthenticated = false;
+      localStorage.clear();
     },
   },
 });

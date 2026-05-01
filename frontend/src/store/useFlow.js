@@ -1,6 +1,10 @@
 import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
+import { getIdToken } from 'firebase/auth';
+import { auth as firebaseAuth } from '../firebase/config';
+import { sendOTP as firebaseSendOTP } from '../firebase/auth';
+import api from '../utils/api';
 import {
   setStep, setPhone, validatePhone as validatePhoneAction,
   setLoading, setPhoneError, goToOtp,
@@ -52,7 +56,6 @@ export function useFlow() {
 
     // Real Firebase path
     try {
-      const { sendOTP: firebaseSendOTP } = await import('../firebase/auth');
       const result = await firebaseSendOTP(digits);
       window.confirmationResult = result;
       dispatch(goToOtp());
@@ -70,6 +73,7 @@ export function useFlow() {
     const otp = flow.otpDigits.join('');
     if (otp.length !== 6) return;
     dispatch(setLoading(true));
+    dispatch(setOtpError(null)); // Clear stale errors
 
     if (DEMO_MODE) {
       // Demo mode — validate against hardcoded OTP
@@ -95,21 +99,39 @@ export function useFlow() {
 
     // Real Firebase path
     try {
-      const { verifyOTP: firebaseVerifyOTP } = await import('../firebase/auth');
-      const user = await firebaseVerifyOTP(window.confirmationResult, otp);
+      // 1. Confirm OTP with Firebase
+      const userCredential = await window.confirmationResult.confirm(otp);
+      const user = userCredential.user;
 
-      const { default: api } = await import('../utils/api');
-      await api.post('/auth/user-init', {
-        firebaseUid: user.uid,
+      // 2. Get ID Token from Firebase to prove identity to our backend
+      const idToken = await getIdToken(user);
+
+      // 3. Exchange Firebase ID Token for our custom JWT session
+      const res = await api.post('/auth/user-init', {
+        idToken,
         role: auth.role,
-        phone: flow.phone,
       });
 
-      dispatch(loginSuccess({ phone: flow.phone, uid: user.uid }));
+      // 4. Store the backend session and user data
+      dispatch(loginSuccess({ 
+        user: res.data.user, 
+        token: res.data.token,
+        role: res.data.role 
+      }));
 
-      if (auth.role === 'USER')        navigate('/customer/home');
-      else if (auth.role === 'WORKER') dispatch(setStep('profile'));
-      else if (auth.role === 'ADMIN')  navigate('/admin');
+      // 5. Navigate based on role and account status
+      if (auth.role === 'USER') {
+        navigate('/customer/home');
+      } else if (auth.role === 'WORKER') {
+        // If it's a new worker or unverified, proceed to onboarding
+        if (res.data.user.status === 'provisional' || !res.data.user.name) {
+          dispatch(setStep('profile'));
+        } else {
+          navigate('/worker/dashboard');
+        }
+      } else if (auth.role === 'ADMIN') {
+        navigate('/admin');
+      }
     } catch (err) {
       console.error('OTP verification error:', err);
       dispatch(setOtpError('Invalid OTP. Please try again.'));
