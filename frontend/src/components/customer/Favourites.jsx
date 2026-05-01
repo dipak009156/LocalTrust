@@ -1,8 +1,29 @@
 import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import { ArrowLeft, Heart, Star, ChevronRight, User } from 'lucide-react';
+import Api from '../../utils/api';
 
 export default function Favourites() {
   const navigate = useNavigate();
+  const [favourites, setFavourites] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // 1. Fetch list of workers favourited by the user
+    // Why: To allow quick booking of trusted partners
+    const fetchFavourites = async () => {
+      try {
+        const res = await Api.get('/users/favourites');
+        setFavourites(res.data.favourites || []);
+      } catch (err) {
+        console.error('Failed to fetch favourites:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchFavourites();
+  }, []);
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
@@ -14,13 +35,14 @@ export default function Favourites() {
       </div>
 
       <div className="max-w-4xl mx-auto w-full p-6 grid grid-cols-1 md:grid-cols-2 gap-6 overflow-y-auto">
-        {[
-          { name: 'Ramesh K.', role: 'Expert Plumber', rating: 4.8, img: 'https://i.pravatar.cc/150?img=11' },
-          { name: 'Suresh M.', role: 'Senior Electrician', rating: 4.9, img: 'https://i.pravatar.cc/150?img=68' },
-        ].map((worker, idx) => (
+        {loading ? (
+          [1,2].map(i => (
+            <div key={i} className="bg-white p-6 rounded-[32px] h-40 animate-pulse border border-gray-100"></div>
+          ))
+        ) : favourites.length > 0 ? favourites.map((fav, idx) => (
           <div key={idx} className="bg-white p-6 rounded-[32px] shadow-sm border border-gray-100 flex items-center gap-5 group hover:border-blue-300 hover:shadow-md transition-all">
             <div className="relative">
-              <img src={worker.img} alt={worker.name} className="w-16 h-16 rounded-2xl border-2 border-white shadow-md object-cover group-hover:scale-105 transition-transform" />
+              <img src={fav.worker?.profilePhoto || "https://i.pravatar.cc/150?img=11"} alt={fav.worker?.name} className="w-16 h-16 rounded-2xl border-2 border-white shadow-md object-cover group-hover:scale-105 transition-transform" />
               <div className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg border-2 border-white">
                 <Heart size={10} fill="currentColor" />
               </div>
@@ -28,28 +50,32 @@ export default function Favourites() {
             <div className="flex-1">
               <div className="flex justify-between items-start">
                 <div>
-                  <h3 className="font-black text-gray-900 text-lg leading-none">{worker.name}</h3>
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1.5">{worker.role}</p>
+                  <h3 className="font-black text-gray-900 text-lg leading-none">{fav.worker?.name}</h3>
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1.5">{fav.worker?.city || 'Partner'}</p>
                 </div>
                 <div className="flex items-center gap-1 bg-orange-50 text-orange-600 px-2 py-0.5 rounded-lg">
                   <Star size={10} fill="currentColor" />
-                  <span className="text-[10px] font-black">{worker.rating}</span>
+                  <span className="text-[10px] font-black">{fav.worker?.avgRating || '5.0'}</span>
                 </div>
               </div>
               <div className="flex gap-3 mt-4">
                 <button 
-                  onClick={() => navigate('/customer/book')}
+                  onClick={() => navigate(`/customer/book?worker=${fav.worker?.id}`)}
                   className="flex-1 bg-blue-700 text-white text-[10px] font-black uppercase tracking-widest py-2 rounded-xl shadow-lg shadow-blue-100 hover:bg-blue-800 transition-colors"
                 >
                   Quick Book
                 </button>
-                <button className="w-9 h-9 bg-gray-50 text-gray-400 rounded-xl flex items-center justify-center hover:bg-gray-100 hover:text-gray-900 transition-colors">
+                <button onClick={() => navigate(`/customer/worker/${fav.worker?.id}`)} className="w-9 h-9 bg-gray-50 text-gray-400 rounded-xl flex items-center justify-center hover:bg-gray-100 hover:text-gray-900 transition-colors">
                   <User size={16} />
                 </button>
               </div>
             </div>
           </div>
-        ))}
+        )) : (
+          <div className="col-span-full py-20 text-center">
+            <p className="font-black text-gray-400 uppercase tracking-widest">No favourites yet</p>
+          </div>
+        )}
       </div>
     </div>
   );

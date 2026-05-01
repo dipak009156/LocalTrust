@@ -4,6 +4,6 @@ const router = express.Router();
 const { userInitialization } = require('../controllers/auth.controller');
 
 router.post('/user-init', userInitialization);
-router.get('/me', )
+router.get('/me',)
 
 module.exports = router;

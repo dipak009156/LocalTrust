@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { useWorker } from '../../context/WorkerContext';
+import Api from '../../utils/api';
 
 export default function EnRoute() {
   const navigate = useNavigate();
@@ -8,9 +9,11 @@ export default function EnRoute() {
   const [showPriceModal, setShowPriceModal] = useState(false);
   const [newPrice, setNewPrice] = useState('');
   const [priceReason, setPriceReason] = useState('');
+  const [loading, setLoading] = useState(false);
 
   // Fallback if accessed without active booking
   const booking = activeBooking || {
+    id: 'DEMO',
     service: 'Tap Repair',
     customer: 'Priya Sharma',
     address: '12/4, Sai Nagar, Andheri West',
@@ -19,10 +22,36 @@ export default function EnRoute() {
     note: 'Please bring a spare washer.'
   };
 
-  const handleRequestPriceChange = () => {
-    // TODO: Socket.io emit price_change_request
-    alert('Request sent to customer.');
-    setShowPriceModal(false);
+  const handleRequestPriceChange = async () => {
+    // 1. Request a price modification from the customer
+    // Why: To handle cases where job complexity or material costs are higher than estimated
+    if (!newPrice) return;
+    try {
+      await Api.patch(`/bookings/${booking.id}/price`, {
+        newPrice: parseFloat(newPrice),
+        reason: priceReason
+      });
+      alert('Request sent to customer. They will be notified to approve the new price.');
+      setShowPriceModal(false);
+    } catch (err) {
+      console.error('Price change request failed:', err);
+      alert('Could not send price change request. Please try again.');
+    }
+  };
+
+  const handleArrived = async () => {
+    // 2. Mark the partner as arrived at the customer's location
+    // Why: To trigger the OTP verification step and notify the customer
+    setLoading(true);
+    try {
+      await Api.patch(`/bookings/${booking.id}/status`, { status: 'arrived' });
+      navigate('/worker/otp-entry');
+    } catch (err) {
+      console.error('Arrival update failed:', err);
+      alert('Error updating status. Please check your connection.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -32,7 +61,6 @@ export default function EnRoute() {
         <div className="absolute top-1/4 left-1/3 w-6 h-6 bg-blue-700 rounded-full border-4 border-white shadow-lg animate-pulse z-10"></div>
         <div className="absolute top-1/2 left-2/3 w-8 h-8 text-2xl flex items-center justify-center -translate-x-1/2 -translate-y-full z-10">📍</div>
         
-        {/* Navigation path line demo */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none">
           <path d="M150 200 L200 250 L250 400" fill="none" stroke="#1d4ed8" strokeWidth="4" strokeDasharray="8 8" className="opacity-50" />
         </svg>
@@ -51,20 +79,20 @@ export default function EnRoute() {
           
           <div className="flex justify-between items-start mb-6">
             <div>
-              <h2 className="text-xl font-extrabold text-gray-900">{booking.customer}</h2>
+              <h2 className="text-xl font-extrabold text-gray-900">{booking.customer || booking.user?.name || 'Customer'}</h2>
               <p className="text-sm font-semibold text-gray-500 mt-1 flex items-center gap-1">
-                📍 {booking.address} <span className="text-blue-700 font-bold ml-1">({booking.distance})</span>
+                📍 {booking.address} <span className="text-blue-700 font-bold ml-1">({booking.distance || 'Near you'})</span>
               </p>
             </div>
             <div className="text-right shrink-0">
-              <p className="text-sm font-bold text-gray-500">{booking.service}</p>
-              <p className="text-xl font-black text-gray-900 mt-1">₹{booking.price}</p>
+              <p className="text-sm font-bold text-gray-500">{booking.service || booking.category?.name || 'Service'}</p>
+              <p className="text-xl font-black text-gray-900 mt-1">₹{booking.price || booking.basePrice}</p>
             </div>
           </div>
 
           <div className="bg-yellow-50 p-4 rounded-2xl border border-yellow-100 mb-6">
             <p className="text-xs font-bold text-yellow-800 uppercase tracking-wide mb-1">Customer Note</p>
-            <p className="text-sm font-medium text-yellow-900 italic">"{booking.note}"</p>
+            <p className="text-sm font-medium text-yellow-900 italic">"{booking.note || 'No specific notes'}"</p>
           </div>
 
           <div className="flex gap-3 mb-6">
@@ -72,7 +100,7 @@ export default function EnRoute() {
               <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
               Chat
             </button>
-            <a href="tel:+919876543210" className="flex-1 bg-white border border-gray-200 text-gray-900 font-bold py-3 rounded-2xl shadow-sm flex items-center justify-center gap-2 hover:bg-gray-50 text-center">
+            <a href={`tel:${booking.user?.phone || '9876543210'}`} className="flex-1 bg-white border border-gray-200 text-gray-900 font-bold py-3 rounded-2xl shadow-sm flex items-center justify-center gap-2 hover:bg-gray-50 text-center">
               <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
               Call
             </a>
@@ -82,8 +110,12 @@ export default function EnRoute() {
             Request Price Change
           </button>
 
-          <button onClick={() => navigate('/worker/otp-entry')} className="w-full bg-blue-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-blue-200 hover:bg-blue-800 transition-colors">
-            I've Arrived — Request OTP
+          <button 
+            onClick={handleArrived} 
+            disabled={loading}
+            className="w-full bg-blue-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-blue-200 hover:bg-blue-800 transition-colors disabled:opacity-50"
+          >
+            {loading ? 'Updating...' : "I've Arrived — Request OTP"}
           </button>
         </div>
       </div>

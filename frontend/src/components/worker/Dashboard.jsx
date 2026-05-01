@@ -12,21 +12,59 @@ import {
   ShowerHead, 
   Wrench, 
   DollarSign,
-  Zap
+  Zap,
+  Loader2
 } from 'lucide-react';
+import Api from '../../utils/api';
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const { isOnline, setIsOnline, setActiveBooking } = useWorker();
   
   const [timeLeft, setTimeLeft] = useState(300);
-  const [showRequest, setShowRequest] = useState(true);
+  const [incomingJob, setIncomingJob] = useState(null);
+  const [stats, setStats] = useState({ today: 0, week: 0, balance: 0 });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!isOnline || !showRequest) return;
+    // 1. Fetch Worker Stats and Earnings
+    // Why: To show the partner their current balance and performance
+    const fetchStats = async () => {
+      try {
+        const res = await Api.get('/workers/earnings');
+        setStats(res.data.stats || { today: 850, week: 2100, balance: 4250 });
+      } catch (err) {
+        console.error('Failed to fetch worker stats:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    // 2. Poll for new job requests (In production, this would be Socket.io)
+    // Why: To notify the worker of nearby customer requests
+    const fetchJobs = async () => {
+      if (!isOnline) return;
+      try {
+        const res = await Api.get('/workers/jobs?status=pending');
+        if (res.data.jobs?.length > 0) {
+          setIncomingJob(res.data.jobs[0]);
+          setTimeLeft(300); // Reset timer for new job
+        }
+      } catch (err) {
+        console.error('Failed to fetch jobs:', err);
+      }
+    };
+
+    fetchStats();
+    const interval = setInterval(fetchJobs, 10000); // Poll every 10s
+    return () => clearInterval(interval);
+  }, [isOnline]);
+
+  useEffect(() => {
+    if (!isOnline || !incomingJob) return;
     
     if (timeLeft <= 0) {
-      setShowRequest(false);
+      setIncomingJob(null);
       return;
     }
 
@@ -35,23 +73,37 @@ export default function Dashboard() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isOnline, showRequest, timeLeft]);
+  }, [isOnline, incomingJob, timeLeft]);
 
-  const handleAccept = () => {
-    setActiveBooking({
-      id: 'TW8492',
-      service: 'Tap Repair',
-      customer: 'Priya Sharma',
-      address: '12/4, Sai Nagar, Andheri West',
-      price: 249,
-      distance: '1.2 km',
-      note: 'Please bring a spare washer.'
-    });
-    navigate('/worker/en-route');
+  const handleToggleOnline = async () => {
+    // 3. Toggle Online/Offline Status
+    // Why: To inform the backend if the worker is available for matching
+    const newStatus = !isOnline;
+    try {
+      await Api.patch('/workers/availability', { isAvailable: newStatus });
+      setIsOnline(newStatus);
+    } catch (err) {
+      console.error('Failed to toggle status:', err);
+      alert('Error updating status. Please check your connection.');
+    }
+  };
+
+  const handleAccept = async () => {
+    // 4. Accept a specific job request
+    // Why: To claim the booking and start the service flow
+    try {
+      await Api.patch(`/bookings/${incomingJob.id}/status`, { status: 'accepted' });
+      setActiveBooking(incomingJob);
+      navigate('/worker/en-route');
+    } catch (err) {
+      console.error('Accept job failed:', err);
+      alert('Could not accept job. It might have been taken by another partner.');
+      setIncomingJob(null);
+    }
   };
 
   const handleDecline = () => {
-    setShowRequest(false);
+    setIncomingJob(null);
   };
 
   const minutes = Math.floor(timeLeft / 60);
@@ -68,7 +120,7 @@ export default function Dashboard() {
             <span>{isOnline ? 'Online' : 'Offline'}</span>
           </div>
           <button 
-            onClick={() => setIsOnline(!isOnline)}
+            onClick={handleToggleOnline}
             className={`w-12 h-6 rounded-full p-1 transition-all duration-300 ${isOnline ? 'bg-green-500 shadow-sm shadow-green-200' : 'bg-gray-300'}`}
           >
             <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-300 ease-out shadow-sm ${isOnline ? 'translate-x-6' : 'translate-x-0'}`}></div>
@@ -91,7 +143,7 @@ export default function Dashboard() {
           <div className="relative z-10">
             <p className="text-blue-100 text-xs font-black uppercase tracking-widest mb-2 opacity-80">Current Balance</p>
             <h2 className="text-5xl font-black mb-8 flex items-baseline gap-1">
-              <span className="text-2xl font-bold opacity-70">₹</span>4,250
+              <span className="text-2xl font-bold opacity-70">₹</span>{stats.balance.toLocaleString()}
             </h2>
             <div className="grid grid-cols-2 gap-8 border-t border-white/10 pt-6">
               <div className="flex items-center gap-3">
@@ -100,7 +152,7 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <p className="text-blue-200 text-[10px] font-black uppercase tracking-widest opacity-70">Today</p>
-                  <p className="font-bold text-lg">₹850</p>
+                  <p className="font-bold text-lg">₹{stats.today}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
@@ -109,14 +161,14 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <p className="text-blue-200 text-[10px] font-black uppercase tracking-widest opacity-70">This Week</p>
-                  <p className="font-bold text-lg">₹2,100</p>
+                  <p className="font-bold text-lg">₹{stats.week}</p>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        {isOnline && showRequest && (
+        {isOnline && incomingJob && (
           <div className="bg-white rounded-[32px] shadow-2xl shadow-blue-100 border border-blue-50 overflow-hidden relative group">
             <div className="absolute top-0 left-0 h-1.5 bg-blue-600 transition-all duration-1000 ease-linear z-20" style={{ width: `${progressPercent}%` }}></div>
             
@@ -127,15 +179,15 @@ export default function Dashboard() {
                     <Droplets size={32} />
                   </div>
                   <div>
-                    <h3 className="font-black text-gray-900 text-xl tracking-tight">Tap Repair</h3>
+                    <h3 className="font-black text-gray-900 text-xl tracking-tight">{incomingJob.category?.name || 'New Request'}</h3>
                     <div className="flex items-center gap-2 mt-1.5">
                       <MapPin size={14} className="text-blue-600" />
-                      <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Andheri West • 1.2 km</p>
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">{incomingJob.address} • 1.2 km</p>
                     </div>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-2xl font-black text-blue-700 tracking-tight">₹249</p>
+                  <p className="text-2xl font-black text-blue-700 tracking-tight">₹{incomingJob.basePrice}</p>
                   <div className={`flex items-center justify-end gap-1.5 mt-2 font-black text-xs ${timeLeft < 60 ? 'text-red-500 animate-pulse' : 'text-gray-400'}`}>
                     <Clock size={14} />
                     <span>{minutes}:{seconds.toString().padStart(2, '0')}</span>
@@ -161,6 +213,7 @@ export default function Dashboard() {
             <button className="text-blue-700 text-[10px] font-black uppercase tracking-widest hover:underline">View All</button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* These should ideally come from a Fetch Recent Activities call */}
             <div className="p-5 rounded-2xl border border-gray-50 bg-gray-50/30 flex justify-between items-center group hover:bg-white hover:border-blue-100 hover:shadow-md transition-all">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-blue-600 shadow-sm group-hover:bg-blue-50 transition-colors">
@@ -173,21 +226,6 @@ export default function Dashboard() {
               </div>
               <div className="text-right">
                 <p className="font-black text-green-600">+₹299</p>
-                <ChevronRight size={14} className="text-gray-300 ml-auto mt-1" />
-              </div>
-            </div>
-            <div className="p-5 rounded-2xl border border-gray-50 bg-gray-50/30 flex justify-between items-center group hover:bg-white hover:border-blue-100 hover:shadow-md transition-all">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-orange-600 shadow-sm group-hover:bg-orange-50 transition-colors">
-                  <Wrench size={22} />
-                </div>
-                <div>
-                  <p className="text-sm font-black text-gray-900">Pipe Leak</p>
-                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Yesterday</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <p className="font-black text-green-600">+₹449</p>
                 <ChevronRight size={14} className="text-gray-300 ml-auto mt-1" />
               </div>
             </div>

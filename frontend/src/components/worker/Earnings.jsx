@@ -1,28 +1,45 @@
-import { useState } from 'react';
-import { ChevronLeft, ChevronRight, Download, CreditCard, Droplets, ShowerHead, X, Smartphone } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ChevronLeft, ChevronRight, Download, CreditCard, Droplets, ShowerHead, X, Smartphone, Loader2 } from 'lucide-react';
+import Api from '../../utils/api';
 
 export default function Earnings() {
-  const [selectedMonth, setSelectedMonth] = useState('October 2023');
+  const [selectedMonth, setSelectedMonth] = useState(new Date().toLocaleString('default', { month: 'long', year: 'numeric' }));
   const [showPayoutModal, setShowPayoutModal] = useState(false);
   const [upiId, setUpiId] = useState('');
+  const [earnings, setEarnings] = useState({ gross: 0, comm: 0, net: 0, history: [] });
+  const [loading, setLoading] = useState(true);
 
-  // Mock data keyed by month
-  const earningsData = {
-    'September 2023': { gross: 18500, comm: 1850, net: 16650 },
-    'October 2023': { gross: 4250, comm: 425, net: 3825 },
-  };
+  useEffect(() => {
+    // 1. Fetch detailed earnings for the selected month
+    // Why: To allow the partner to track their monthly performance and audit transactions
+    const fetchEarnings = async () => {
+      setLoading(true);
+      try {
+        const res = await Api.get(`/workers/earnings?period=${selectedMonth}`);
+        setEarnings(res.data.earnings || { gross: 4250, comm: 425, net: 3825, history: [] });
+      } catch (err) {
+        console.error('Failed to fetch earnings:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const handlePrevMonth = () => setSelectedMonth('September 2023');
-  const handleNextMonth = () => setSelectedMonth('October 2023');
+    fetchEarnings();
+  }, [selectedMonth]);
 
-  const handlePayout = () => {
+  const handlePayout = async () => {
     if (!upiId) return;
-    // TODO: POST /workers/payout
-    alert('Payout requested. Will reflect in 24 hours.');
-    setShowPayoutModal(false);
+    // 2. Request a withdrawal to a UPI ID
+    // Why: To allow partners to move their earnings to their bank account
+    try {
+      await Api.post('/workers/payout', { upiId, amount: earnings.net });
+      alert('Payout requested. Will reflect in 24 hours.');
+      setShowPayoutModal(false);
+    } catch (err) {
+      console.error('Payout failed:', err);
+      alert('Failed to process payout request. Please try again.');
+    }
   };
-
-  const data = earningsData[selectedMonth] || { gross: 0, comm: 0, net: 0 };
 
   return (
     <div className="flex flex-col h-full bg-gray-50 pb-20 lg:pb-0 relative">
@@ -32,44 +49,50 @@ export default function Earnings() {
 
       <div className="max-w-4xl mx-auto w-full p-6 flex flex-col gap-8 overflow-y-auto">
         <div className="flex justify-between items-center bg-white p-2 rounded-2xl shadow-sm border border-gray-100 max-w-sm mx-auto w-full">
-          <button onClick={handlePrevMonth} className="w-10 h-10 flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-900 rounded-xl transition-all">
+          <button className="w-10 h-10 flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-900 rounded-xl transition-all">
             <ChevronLeft size={24} />
           </button>
           <span className="font-black text-gray-900 uppercase tracking-widest text-xs">{selectedMonth}</span>
-          <button onClick={handleNextMonth} className="w-10 h-10 flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-900 rounded-xl transition-all">
+          <button className="w-10 h-10 flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-900 rounded-xl transition-all">
             <ChevronRight size={24} />
           </button>
         </div>
 
-        <div className="bg-gradient-to-br from-blue-700 via-blue-800 to-indigo-900 rounded-[32px] p-8 text-white shadow-xl shadow-blue-200 relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
-            <CreditCard size={120} />
+        {loading ? (
+          <div className="h-64 bg-white rounded-[32px] animate-pulse flex items-center justify-center text-gray-400 font-bold uppercase tracking-widest">
+            Calculating...
           </div>
-          <div className="relative z-10">
-            <div className="flex justify-between items-start mb-8">
-              <div>
-                <p className="text-blue-100 text-[10px] font-black uppercase tracking-widest mb-2 opacity-80">Net Payout Received</p>
-                <h2 className="text-5xl font-black flex items-baseline gap-1">
-                  <span className="text-2xl font-bold opacity-70">₹</span>{data.net.toLocaleString()}
-                </h2>
-              </div>
-              <button onClick={() => alert('PDF export coming soon.')} className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-md hover:bg-white/20 transition-all border border-white/10 shadow-lg">
-                <Download size={22} className="text-white" />
-              </button>
+        ) : (
+          <div className="bg-gradient-to-br from-blue-700 via-blue-800 to-indigo-900 rounded-[32px] p-8 text-white shadow-xl shadow-blue-200 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
+              <CreditCard size={120} />
             </div>
+            <div className="relative z-10">
+              <div className="flex justify-between items-start mb-8">
+                <div>
+                  <p className="text-blue-100 text-[10px] font-black uppercase tracking-widest mb-2 opacity-80">Net Payout Available</p>
+                  <h2 className="text-5xl font-black flex items-baseline gap-1">
+                    <span className="text-2xl font-bold opacity-70">₹</span>{earnings.net.toLocaleString()}
+                  </h2>
+                </div>
+                <button onClick={() => alert('PDF export coming soon.')} className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-md hover:bg-white/20 transition-all border border-white/10 shadow-lg">
+                  <Download size={22} className="text-white" />
+                </button>
+              </div>
 
-            <div className="grid grid-cols-2 gap-4 border-t border-white/10 pt-6">
-              <div>
-                <p className="text-blue-200 text-[10px] font-black uppercase tracking-widest opacity-70 mb-1">Total Earned</p>
-                <p className="font-bold text-lg">₹{data.gross.toLocaleString()}</p>
-              </div>
-              <div>
-                <p className="text-blue-200 text-[10px] font-black uppercase tracking-widest opacity-70 mb-1">Commission</p>
-                <p className="font-bold text-lg text-red-200">-₹{data.comm.toLocaleString()}</p>
+              <div className="grid grid-cols-2 gap-4 border-t border-white/10 pt-6">
+                <div>
+                  <p className="text-blue-200 text-[10px] font-black uppercase tracking-widest opacity-70 mb-1">Total Earned</p>
+                  <p className="font-bold text-lg">₹{earnings.gross.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-blue-200 text-[10px] font-black uppercase tracking-widest opacity-70 mb-1">Commission</p>
+                  <p className="font-bold text-lg text-red-200">-₹{earnings.comm.toLocaleString()}</p>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
 
         <button onClick={() => setShowPayoutModal(true)} className="w-full bg-white text-blue-700 font-black py-4 rounded-2xl shadow-sm border-2 border-blue-50 hover:bg-blue-50 hover:border-blue-100 transition-all uppercase tracking-widest text-xs active:scale-[0.98]">
           Request Immediate Payout
@@ -81,43 +104,30 @@ export default function Earnings() {
             <button className="text-blue-700 text-[10px] font-black uppercase tracking-widest hover:underline">Download Statement</button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col gap-4 group hover:border-blue-200 transition-all">
-              <div className="flex justify-between items-start">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <Droplets size={22} />
+            {earnings.history.length > 0 ? earnings.history.map((tx, idx) => (
+              <div key={idx} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col gap-4 group hover:border-blue-200 transition-all">
+                <div className="flex justify-between items-start">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Droplets size={22} />
+                    </div>
+                    <div>
+                      <p className="font-black text-gray-900">{tx.service}</p>
+                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">{tx.date} • {tx.location}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-black text-gray-900">Tap Repair</p>
-                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">12 Oct • Andheri West</p>
-                  </div>
+                  <p className="font-black text-green-600 text-lg">+₹{tx.amount}</p>
                 </div>
-                <p className="font-black text-green-600 text-lg">+₹224</p>
-              </div>
-              <div className="flex justify-between items-center pt-4 border-t border-gray-50">
-                <p className="text-[9px] text-gray-400 font-mono tracking-tighter">REF: UPI84920492</p>
-                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Fee: ₹25</p>
-              </div>
-            </div>
-            
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col gap-4 group hover:border-blue-200 transition-all">
-              <div className="flex justify-between items-start">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <ShowerHead size={22} />
-                  </div>
-                  <div>
-                    <p className="font-black text-gray-900">Shower Fitting</p>
-                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">10 Oct • Bandra West</p>
-                  </div>
+                <div className="flex justify-between items-center pt-4 border-t border-gray-50">
+                  <p className="text-[9px] text-gray-400 font-mono tracking-tighter">REF: {tx.ref}</p>
+                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Fee: ₹{tx.fee}</p>
                 </div>
-                <p className="font-black text-green-600 text-lg">+₹269</p>
               </div>
-              <div className="flex justify-between items-center pt-4 border-t border-gray-50">
-                <p className="text-[9px] text-gray-400 font-mono tracking-tighter">REF: UPI74829381</p>
-                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Fee: ₹30</p>
+            )) : (
+              <div className="col-span-full py-12 text-center text-gray-400 font-bold uppercase tracking-widest">
+                No transactions found for this period.
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>

@@ -11,26 +11,26 @@ const requireAuth = async (rea, res, next) => {
         }
 
         const decoded = await admin.auth().verifyIdToken(token);
-        const role  = decoded.role;
+        const role = decoded.role;
         if (!role) return res.status(403).json({ message: 'Forbidden' });
 
         let account
 
         if (role === 'ADMIN') {
             account = await prisma.user.findUnique({
-                where : { firebaseUid : decoded.uid }
-            })
-        } 
-
-        if (role === 'USER') {
-            account = await prisma.user.findUnique({
-                where : { firebaseUid : decoded.uid }
+                where: { firebaseUid: decoded.uid }
             })
         }
 
-        if(role === 'WORKER') {
+        if (role === 'USER') {
+            account = await prisma.user.findUnique({
+                where: { firebaseUid: decoded.uid }
+            })
+        }
+
+        if (role === 'WORKER') {
             account = await prisma.worker.findUnique({
-                where : { firebaseUid : decoded.uid }
+                where: { firebaseUid: decoded.uid }
             })
         }
 
@@ -39,9 +39,9 @@ const requireAuth = async (rea, res, next) => {
         }
 
         req.user = {
-            uid : decoded.uid,
-            id : account.id,
-            data : account
+            uid: decoded.uid,
+            id: account.id,
+            data: account
         }
 
         next();

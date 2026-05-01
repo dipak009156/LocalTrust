@@ -1,34 +1,83 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import Api from '../../utils/api';
+import { ShieldCheck, AlertTriangle, Loader2 } from 'lucide-react';
 
 export default function OtpCheckin() {
   const navigate = useNavigate();
+  const { id } = useParams();
+  const [otp, setOtp] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // 1. Fetch the secure OTP for this specific booking
+    // Why: To provide a secure verification method at the customer's doorstep
+    const fetchOtp = async () => {
+      try {
+        const res = await Api.get(`/bookings/${id}/otp`);
+        setOtp(res.data.otp || '----');
+      } catch (err) {
+        console.error('Failed to fetch OTP:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    // 2. Poll for booking status change
+    // Why: To automatically redirect the user once the partner enters the OTP on their device
+    const checkStatus = async () => {
+      try {
+        const res = await Api.get(`/bookings/${id}`);
+        if (res.data.booking?.status === 'in_progress') {
+          navigate(`/customer/job-in-progress/${id}`);
+        }
+      } catch (err) {
+        console.error('Status check failed:', err);
+      }
+    };
+
+    fetchOtp();
+    const interval = setInterval(checkStatus, 5000);
+    return () => clearInterval(interval);
+  }, [id, navigate]);
 
   return (
     <div className="flex flex-col h-full bg-white p-6">
-      <div className="flex-1 flex flex-col items-center justify-center text-center">
+      <div className="flex-1 flex flex-col items-center justify-center text-center max-w-xl mx-auto w-full">
         <div className="w-20 h-20 bg-blue-50 text-blue-700 rounded-full flex items-center justify-center mb-6">
-          <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+          <ShieldCheck size={40} />
         </div>
 
-        <h1 className="text-2xl font-extrabold text-gray-900 mb-2">Worker Arrived</h1>
-        <p className="text-gray-600 font-medium mb-8">Please share this secure PIN with Ramesh to start the job.</p>
+        <h1 className="text-2xl font-black text-gray-900 mb-2 tracking-tight">Partner Arrived</h1>
+        <p className="text-gray-500 font-bold mb-8 uppercase text-[10px] tracking-widest">Share this secure PIN to start the service</p>
 
-        <div className="flex gap-4 justify-center mb-8">
-          {['4', '9', '2', '1'].map((num, i) => (
-            <div key={i} className="w-16 h-20 bg-gray-50 border border-gray-200 rounded-2xl flex items-center justify-center text-4xl font-extrabold text-blue-700">
-              {num}
-            </div>
-          ))}
+        {loading ? (
+          <div className="flex gap-4 justify-center mb-8">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="w-16 h-20 bg-gray-50 animate-pulse border border-gray-100 rounded-2xl"></div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex gap-4 justify-center mb-8">
+            {otp.split('').map((num, i) => (
+              <div key={i} className="w-16 h-20 bg-gray-50 border border-gray-100 shadow-sm rounded-2xl flex items-center justify-center text-4xl font-black text-blue-700">
+                {num}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="bg-orange-50 border border-orange-100 rounded-[24px] p-6 flex gap-4 text-sm font-bold text-orange-900 text-left">
+          <AlertTriangle size={24} className="shrink-0 text-orange-500" />
+          <p className="leading-relaxed uppercase text-[10px] tracking-widest opacity-80">
+            Security Check: Do not share this PIN until you have verified the partner's identity at your door.
+          </p>
         </div>
 
-        <div className="bg-orange-50 border border-orange-100 rounded-2xl p-4 flex gap-3 text-sm font-medium text-orange-900 text-left">
-          <svg className="w-5 h-5 shrink-0 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-          Do not share this PIN until you have verified the worker's identity at your door.
+        <div className="mt-12 flex flex-col items-center gap-2">
+          <Loader2 className="w-4 h-4 text-blue-700 animate-spin" />
+          <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Waiting for partner to enter PIN...</p>
         </div>
-
-        <button onClick={() => navigate('/customer/job-in-progress')} className="mt-8 text-sm text-gray-400 font-semibold underline">
-          [Simulate OTP Entered]
-        </button>
       </div>
     </div>
   );

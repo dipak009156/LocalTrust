@@ -1,14 +1,43 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import Api from '../../utils/api';
 
 export default function LiveTracking() {
   const navigate = useNavigate();
+  const { id } = useParams();
+  const [booking, setBooking] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // 1. Fetch current live status of the booking
+    // Why: To show the user the real-time position and status of the partner
+    const fetchBookingStatus = async () => {
+      try {
+        const res = await Api.get(`/bookings/${id}`);
+        setBooking(res.data.booking);
+        
+        // Auto-redirect if worker has arrived
+        if (res.data.booking?.status === 'arrived') {
+          navigate(`/customer/otp-checkin/${id}`);
+        }
+      } catch (err) {
+        console.error('Failed to fetch tracking data:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchBookingStatus();
+    const interval = setInterval(fetchBookingStatus, 15000); // Refresh every 15s
+    return () => clearInterval(interval);
+  }, [id, navigate]);
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
       <div className="flex-1 bg-gray-200 relative">
         {/* Placeholder Map */}
-        <div className="absolute inset-0 flex items-center justify-center text-gray-400 font-bold">
-          [ Live Map with Moving Worker Placeholder ]
+        <div className="absolute inset-0 flex items-center justify-center text-gray-400 font-bold px-12 text-center">
+          [ Real-time map will integrate with Google Maps API using worker latitude: {booking?.worker?.lat || '---'} ]
         </div>
       </div>
 
@@ -17,8 +46,10 @@ export default function LiveTracking() {
         
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h2 className="text-xl font-extrabold text-gray-900">Worker En Route</h2>
-            <p className="text-blue-700 font-bold text-sm">Arriving in 12 mins</p>
+            <h2 className="text-xl font-extrabold text-gray-900">
+              {booking?.status === 'accepted' ? 'Partner Confirmed' : 'Partner En Route'}
+            </h2>
+            <p className="text-blue-700 font-bold text-sm">Arriving shortly</p>
           </div>
           <div className="w-12 h-12 bg-blue-50 text-blue-700 rounded-full flex items-center justify-center animate-pulse">
             📍
@@ -36,9 +67,9 @@ export default function LiveTracking() {
           </button>
         </div>
 
-        {/* Simulate worker arriving for demo purposes */}
-        <button onClick={() => navigate('/customer/otp-checkin')} className="w-full text-xs text-gray-400 font-semibold underline text-center mt-2">
-          [Simulate Arrived]
+        {/* Support Link */}
+        <button onClick={() => navigate('/customer/help')} className="w-full text-xs text-gray-400 font-semibold underline text-center mt-2">
+          Need help with this booking?
         </button>
       </div>
     </div>

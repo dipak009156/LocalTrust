@@ -1,72 +1,121 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import Api from '../../utils/api';
+import { Star, Heart, ArrowLeft, Loader2 } from 'lucide-react';
 
 export default function WorkerDetail() {
   const navigate = useNavigate();
+  const { id } = useParams();
+  const [worker, setWorker] = useState(null);
+  const [isFavourite, setIsFavourite] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // 1. Fetch worker profile and performance history
+    // Why: To help the customer decide if this partner is right for their job
+    const fetchWorker = async () => {
+      try {
+        const res = await Api.get(`/workers/${id}`);
+        setWorker(res.data.worker);
+        setIsFavourite(res.data.isFavourite);
+      } catch (err) {
+        console.error('Failed to fetch worker details:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (id) fetchWorker();
+  }, [id]);
+
+  const handleToggleFavourite = async () => {
+    // 2. Add or remove worker from favourites
+    // Why: To allow the user to easily find and rebook this partner in the future
+    try {
+      await Api.post('/users/favourites/toggle', { workerId: id });
+      setIsFavourite(!isFavourite);
+    } catch (err) {
+      console.error('Favourite toggle failed:', err);
+    }
+  };
+
+  if (loading) return (
+    <div className="h-full flex flex-col items-center justify-center gap-4 bg-gray-50">
+      <Loader2 className="w-10 h-10 text-blue-700 animate-spin" />
+      <p className="font-black text-gray-400 uppercase tracking-widest text-xs">Loading Partner Profile...</p>
+    </div>
+  );
 
   return (
     <div className="flex flex-col h-full bg-gray-50 relative">
       <div className="bg-white px-6 py-5 sticky top-0 z-10 border-b border-gray-100 flex items-center justify-between">
-        <button onClick={() => navigate(-1)} className="w-10 h-10 flex items-center justify-center rounded-full bg-gray-50 text-gray-900">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+        <button onClick={() => navigate(-1)} className="w-10 h-10 flex items-center justify-center rounded-full bg-gray-50 text-gray-900 hover:bg-gray-100 transition-colors">
+          <ArrowLeft size={20} />
         </button>
-        <button className="w-10 h-10 flex items-center justify-center rounded-full bg-red-50 text-red-500">
-          <svg className="w-5 h-5 fill-current" viewBox="0 0 20 20"><path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" /></svg>
+        <button 
+          onClick={handleToggleFavourite}
+          className={`w-10 h-10 flex items-center justify-center rounded-full transition-colors ${isFavourite ? 'bg-red-50 text-red-500' : 'bg-gray-50 text-gray-400'}`}
+        >
+          <Heart size={20} fill={isFavourite ? "currentColor" : "none"} />
         </button>
       </div>
 
-      <div className="p-6 flex flex-col gap-6 overflow-y-auto pb-32">
+      <div className="p-6 flex flex-col gap-6 overflow-y-auto pb-32 max-w-2xl mx-auto w-full">
         <div className="flex flex-col items-center text-center">
-          <img src="https://i.pravatar.cc/150?img=11" alt="Worker" className="w-24 h-24 rounded-full border-4 border-white shadow-md mb-4" />
-          <h2 className="text-2xl font-extrabold text-gray-900">Ramesh K.</h2>
-          <p className="text-blue-700 font-bold text-sm mt-1">Plumber</p>
+          <img src={worker?.profilePhoto || "https://i.pravatar.cc/150?img=11"} alt={worker?.name} className="w-24 h-24 rounded-full border-4 border-white shadow-md mb-4 object-cover" />
+          <h2 className="text-2xl font-extrabold text-gray-900">{worker?.name || 'Partner'}</h2>
+          <p className="text-blue-700 font-bold text-sm mt-1 uppercase tracking-widest">{worker?.city || 'Verified Partner'}</p>
           
-          <div className="flex gap-4 mt-4">
-            <div className="bg-white px-4 py-2 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center">
-              <span className="text-orange-500 font-bold flex items-center gap-1">4.9 <svg className="w-3 h-3 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg></span>
-              <span className="text-[10px] text-gray-500 font-semibold uppercase">Rating</span>
+          <div className="flex gap-4 mt-6">
+            <div className="bg-white px-5 py-3 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center">
+              <span className="text-orange-500 font-black flex items-center gap-1 text-lg">
+                {worker?.avgRating || '5.0'} <Star size={14} fill="currentColor" />
+              </span>
+              <span className="text-[10px] text-gray-400 font-black uppercase tracking-widest mt-0.5">Rating</span>
             </div>
-            <div className="bg-white px-4 py-2 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center">
-              <span className="text-gray-900 font-bold">124</span>
-              <span className="text-[10px] text-gray-500 font-semibold uppercase">Jobs</span>
+            <div className="bg-white px-5 py-3 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center">
+              <span className="text-gray-900 font-black text-lg">{worker?.totalJobs || '10+'}</span>
+              <span className="text-[10px] text-gray-400 font-black uppercase tracking-widest mt-0.5">Jobs</span>
             </div>
-            <div className="bg-white px-4 py-2 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center">
-              <span className="text-gray-900 font-bold">3 Yrs</span>
-              <span className="text-[10px] text-gray-500 font-semibold uppercase">Exp</span>
+            <div className="bg-white px-5 py-3 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center">
+              <span className="text-gray-900 font-black text-lg">{worker?.experience || '3'} Yrs</span>
+              <span className="text-[10px] text-gray-400 font-black uppercase tracking-widest mt-0.5">Exp</span>
             </div>
           </div>
         </div>
 
         <div>
-          <h3 className="font-extrabold text-gray-900 mb-3 text-lg">About</h3>
-          <p className="text-sm font-medium text-gray-600 leading-relaxed bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-            Professional plumber with 3 years of experience. Specializes in tap repairs, pipe leakages, and bathroom fittings. Always ensures a clean workspace after job completion.
+          <h3 className="font-black text-gray-900 mb-3 text-lg tracking-tight uppercase text-xs opacity-50">About Partner</h3>
+          <p className="text-sm font-medium text-gray-600 leading-relaxed bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+            {worker?.bio || "Experienced service professional dedicated to providing high-quality solutions and ensuring complete customer satisfaction with every visit."}
           </p>
         </div>
 
         <div>
-          <h3 className="font-extrabold text-gray-900 mb-3 text-lg">Recent Reviews</h3>
-          <div className="flex flex-col gap-3">
-            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-              <div className="flex justify-between mb-2">
-                <span className="text-sm font-bold text-gray-900">Amit P.</span>
-                <span className="text-orange-500 text-xs font-bold">★ 5</span>
+          <h3 className="font-black text-gray-900 mb-3 text-lg tracking-tight uppercase text-xs opacity-50">Verified Reviews</h3>
+          <div className="flex flex-col gap-4">
+            {worker?.reviews?.length > 0 ? worker.reviews.map((review, idx) => (
+              <div key={idx} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
+                <div className="flex justify-between mb-2">
+                  <span className="text-sm font-black text-gray-900">{review.user?.name || 'Customer'}</span>
+                  <div className="flex items-center gap-1 text-orange-500 text-xs font-black">
+                    <Star size={10} fill="currentColor" /> {review.rating}
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 font-medium leading-relaxed">{review.comment}</p>
               </div>
-              <p className="text-xs text-gray-600 font-medium">Very polite and fixed the issue in 20 minutes.</p>
-            </div>
-            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-              <div className="flex justify-between mb-2">
-                <span className="text-sm font-bold text-gray-900">Sneha R.</span>
-                <span className="text-orange-500 text-xs font-bold">★ 5</span>
+            )) : (
+              <div className="text-center py-6 text-gray-400 font-bold uppercase text-[10px] tracking-widest">
+                No reviews yet. Be the first to rate!
               </div>
-              <p className="text-xs text-gray-600 font-medium">Clean work. Replaced the sink pipe perfectly.</p>
-            </div>
+            )}
           </div>
         </div>
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 p-6 bg-white border-t border-gray-100">
-        <button onClick={() => navigate('/customer/category/plumbing')} className="w-full bg-blue-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-blue-200 hover:bg-blue-800 transition-colors">
-          Book This Worker
+      <div className="absolute bottom-0 left-0 right-0 p-6 bg-white border-t border-gray-100 lg:sticky lg:bg-transparent lg:border-none">
+        <button onClick={() => navigate('/customer/book')} className="max-w-2xl mx-auto w-full bg-blue-700 text-white font-black py-4 rounded-2xl shadow-xl shadow-blue-200 hover:bg-blue-800 transition-all active:scale-[0.98] uppercase tracking-widest text-xs">
+          Direct Book Now
         </button>
       </div>
     </div>

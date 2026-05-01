@@ -1,13 +1,40 @@
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, ShieldCheck } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useState } from 'react';
+import { ArrowLeft, MapPin, ShieldCheck, Loader2 } from 'lucide-react';
+import Api from '../../utils/api';
 
 export default function BookingConfirm() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [loading, setLoading] = useState(false);
+  
+  // Extracting data passed from the selection screens
+  const queryParams = new URLSearchParams(location.search);
+  const serviceId = queryParams.get('service');
+  const serviceName = "Service"; // Should be fetched from context or passed state
+  const price = 249; // Mock price
 
-  // TODO: Add real booking POST logic and trigger Razorpay payment gateway
-  const handleConfirm = () => {
-    // Simulate Razorpay success
-    navigate('/customer/waiting');
+  const handleConfirm = async () => {
+    // 1. Create a new booking in the system
+    // Why: To initialize the service request and freeze the transaction in escrow
+    setLoading(true);
+    try {
+      const res = await Api.post('/bookings', {
+        categoryId: serviceId,
+        address: "12/4, Sai Nagar, Andheri West, Mumbai", // Mock address
+        basePrice: price,
+      });
+
+      // 2. Redirect to waiting screen while searching for worker
+      // TODO: Here we would typically trigger Razorpay payment gateway before redirecting
+      navigate(`/customer/waiting?bookingId=${res.data.id}`);
+    } catch (err) {
+      // Prevent crash and notify user
+      console.error('Booking failed:', err);
+      alert('Failed to place booking. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -21,8 +48,8 @@ export default function BookingConfirm() {
 
       <div className="p-6 flex flex-col gap-6 overflow-y-auto pb-32 max-w-2xl mx-auto w-full">
         <div className="text-center py-4">
-          <h2 className="text-3xl font-extrabold text-gray-900">Tap Repair</h2>
-          <p className="text-blue-700 font-bold text-2xl mt-1">₹249</p>
+          <h2 className="text-3xl font-extrabold text-gray-900">{serviceName}</h2>
+          <p className="text-blue-700 font-bold text-2xl mt-1">₹{price}</p>
         </div>
 
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
@@ -30,7 +57,6 @@ export default function BookingConfirm() {
             <h3 className="font-bold text-gray-900 text-lg">Service Address</h3>
             <button onClick={() => navigate('/customer/address-picker')} className="text-blue-700 text-sm font-bold hover:underline">Edit</button>
           </div>
-          {/* TODO: Use Real GPS Address from AddressPicker */}
           <div className="flex gap-4 items-center bg-gray-50 p-4 rounded-xl border border-gray-200">
             <div className="w-12 h-12 bg-blue-100 rounded-xl shrink-0 flex items-center justify-center text-blue-700">
               <MapPin size={24} />
@@ -42,7 +68,7 @@ export default function BookingConfirm() {
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-4">
           <div className="flex justify-between text-sm font-bold text-gray-600">
             <span>Service fee</span>
-            <span>₹249</span>
+            <span>₹{price}</span>
           </div>
           <div className="flex justify-between text-sm font-bold text-gray-600">
             <span>Platform fee</span>
@@ -51,7 +77,7 @@ export default function BookingConfirm() {
           <div className="h-px w-full bg-gray-100 my-1"></div>
           <div className="flex justify-between text-xl font-black text-gray-900">
             <span>Total to pay</span>
-            <span className="text-blue-700">₹249</span>
+            <span className="text-blue-700">₹{price}</span>
           </div>
         </div>
 
@@ -65,8 +91,12 @@ export default function BookingConfirm() {
 
       <div className="absolute bottom-0 left-0 right-0 p-6 bg-white border-t border-gray-100 lg:sticky lg:bg-transparent lg:border-none">
         <div className="max-w-2xl mx-auto w-full">
-          <button onClick={handleConfirm} className="w-full bg-blue-700 text-white font-black py-4 rounded-2xl shadow-xl shadow-blue-200 hover:bg-blue-800 transition-all active:scale-[0.98] text-lg">
-            Confirm and Pay ₹249
+          <button 
+            onClick={handleConfirm} 
+            disabled={loading}
+            className="w-full bg-blue-700 text-white font-black py-4 rounded-2xl shadow-xl shadow-blue-200 hover:bg-blue-800 transition-all active:scale-[0.98] text-lg flex items-center justify-center gap-3 disabled:opacity-50"
+          >
+            {loading ? <Loader2 className="animate-spin" /> : `Confirm and Pay ₹${price}`}
           </button>
         </div>
       </div>
