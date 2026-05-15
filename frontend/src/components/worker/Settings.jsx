@@ -1,7 +1,8 @@
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { useDispatch } from 'react-redux';
-import { setRole } from '../../store/authSlice';
+import { logout } from '../../store/authSlice';
+import { clearToken } from '../../firebase/auth';
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -21,8 +22,9 @@ export default function Settings() {
   };
 
   const handleLogout = () => {
-    dispatch(setRole(null));
-    navigate('/login');
+    clearToken();
+    dispatch(logout());
+    navigate('/');
   };
 
   return (

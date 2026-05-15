@@ -1,79 +1,118 @@
-import { useNavigate } from 'react-router-dom';
-import { useState, useRef, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, Send, Phone } from 'lucide-react';
+import api from '../../utils/api';
 
-export default function Chat() {
-  const navigate = useNavigate();
-  const messagesEndRef = useRef(null);
-  const [messages, setMessages] = useState([
-    { id: 1, sender: 'worker', text: 'Hi, I am on my way!', time: '10:30 AM' },
-    { id: 2, sender: 'customer', text: 'Great, thanks! Please ring the bell when you arrive.', time: '10:32 AM' }
-  ]);
-  const [input, setInput] = useState('');
+export default function WorkerChat() {
+  const navigate  = useNavigate();
+  const location  = useLocation();
+  const bookingId = location.state?.bookingId;
 
-  // TODO: Socket.io emit and listen on message event
+  const [messages, setMessages] = useState([]);
+  const [input, setInput]       = useState('');
+  const [loading, setLoading]   = useState(true);
+  const bottomRef               = useRef(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  const handleSend = () => {
-    if (!input.trim()) return;
-    setMessages([...messages, { id: Date.now(), sender: 'worker', text: input, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
-    setInput('');
-  };
-
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter') {
-      handleSend();
+  const fetchMessages = async () => {
+    if (!bookingId) return;
+    try {
+      const { data } = await api.get(`/booking/${bookingId}/chat`);
+      setMessages(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
   };
 
+  useEffect(() => {
+    fetchMessages();
+    const interval = setInterval(fetchMessages, 3000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookingId]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const handleSend = async () => {
+    if (!input.trim() || !bookingId) return;
+    const text = input.trim();
+    setInput('');
+    setMessages(prev => [...prev, {
+      id: Date.now(), senderRole: 'worker', message: text,
+      sentAt: new Date().toISOString(),
+    }]);
+    try {
+      await api.post(`/booking/${bookingId}/chat`, { message: text });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fmt = (iso) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
   return (
     <div className="flex flex-col h-full bg-gray-50 relative">
-      <div className="bg-white px-6 py-5 sticky top-0 z-10 border-b border-gray-100 flex items-center gap-4">
-        <button onClick={() => navigate(-1)} className="w-10 h-10 flex items-center justify-center rounded-full bg-gray-50 text-gray-900 border border-gray-100">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-        </button>
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold border border-blue-200">
-            P
-          </div>
+      <div className="bg-white px-6 py-4 sticky top-0 z-10 border-b border-gray-100 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <button onClick={() => navigate(-1)} className="w-10 h-10 flex items-center justify-center rounded-full bg-gray-50 text-gray-900">
+            <ArrowLeft size={20} />
+          </button>
           <div>
-            <h1 className="font-extrabold text-gray-900 leading-tight">Priya Sharma</h1>
-            <p className="text-xs text-green-600 font-bold">Online</p>
+            <h1 className="font-black text-gray-900 leading-tight">Customer</h1>
+            <p className="text-[10px] text-green-600 font-black uppercase tracking-widest">Chat</p>
           </div>
         </div>
+        <button className="w-10 h-10 flex items-center justify-center rounded-xl bg-blue-50 text-blue-700">
+          <Phone size={18} />
+        </button>
       </div>
 
-      <div className="flex-1 p-6 flex flex-col gap-4 overflow-y-auto pb-24">
-        <div className="text-center text-xs text-gray-400 font-semibold mb-2">Today</div>
-        {messages.map((msg) => (
-          <div key={msg.id} className={`flex flex-col ${msg.sender === 'worker' ? 'items-end' : 'items-start'}`}>
-            <div className={`px-4 py-3 rounded-2xl max-w-[80%] ${msg.sender === 'worker' ? 'bg-blue-700 text-white rounded-br-sm' : 'bg-white border border-gray-200 text-gray-900 rounded-bl-sm shadow-sm'}`}>
-              <p className="text-sm font-medium">{msg.text}</p>
+      <div className="flex-1 p-6 flex flex-col gap-4 overflow-y-auto pb-28">
+        {loading && <div className="text-center text-gray-400 text-sm font-medium">Loading messages…</div>}
+        {!loading && messages.length === 0 && (
+          <div className="text-center text-gray-400 text-sm font-medium">No messages yet.</div>
+        )}
+        {messages.map(msg => {
+          const isMe = msg.senderRole === 'worker';
+          return (
+            <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+              <div className={`px-5 py-3.5 rounded-[24px] max-w-[85%] shadow-sm ${
+                isMe
+                  ? 'bg-blue-700 text-white rounded-br-none'
+                  : 'bg-white border border-gray-100 text-gray-900 rounded-bl-none'
+              }`}>
+                <p className="text-sm font-medium leading-relaxed">{msg.message}</p>
+              </div>
+              <span className="text-[9px] text-gray-400 font-black uppercase tracking-widest mt-1.5 px-2">
+                {fmt(msg.sentAt)}
+              </span>
             </div>
-            <span className="text-[10px] text-gray-400 font-semibold mt-1 px-1">{msg.time}</span>
-          </div>
-        ))}
-        <div ref={messagesEndRef} />
+          );
+        })}
+        <div ref={bottomRef} />
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4">
-        <div className="flex items-center gap-2">
-          <input 
-            type="text" 
+      <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-gray-50 via-gray-50/95 to-transparent">
+        <div className="bg-white p-2 rounded-[28px] shadow-xl border border-gray-100 flex items-center gap-2">
+          <input
+            type="text"
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="Type a message..." 
-            className="flex-1 bg-gray-50 border border-gray-200 rounded-full px-5 py-3 text-sm font-medium text-gray-900 outline-none focus:border-blue-700 transition-colors"
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSend()}
+            placeholder="Send a message…"
+            className="flex-1 bg-transparent px-4 py-2 text-sm font-bold text-gray-900 outline-none placeholder:text-gray-400"
           />
-          <button onClick={handleSend} className="w-12 h-12 bg-blue-700 text-white rounded-full flex items-center justify-center shadow-md shadow-blue-200 active:scale-95 transition-transform">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+          <button
+            onClick={handleSend}
+            disabled={!input.trim()}
+            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all ${
+              input.trim() ? 'bg-blue-700 text-white shadow-lg shadow-blue-200 active:scale-95' : 'bg-gray-50 text-gray-300'
+            }`}
+          >
+            <Send size={18} fill={input.trim() ? 'currentColor' : 'none'} />
           </button>
         </div>
       </div>

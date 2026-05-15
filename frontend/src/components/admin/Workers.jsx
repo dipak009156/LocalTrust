@@ -1,35 +1,60 @@
-import { useState } from 'react';
-import { mockData } from '../../utils/mockData';
+import { useState, useEffect } from 'react';
+import api from '../../utils/api';
 
 export default function Workers() {
   const [skillFilter, setSkillFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
   const [selectedWorker, setSelectedWorker] = useState(null);
   const [showSuspendModal, setShowSuspendModal] = useState(false);
+  const [workers, setWorkers] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // TODO: GET /admin/workers
+  useEffect(() => {
+    api.get('/admin/workers?status=all')
+      .then(res => setWorkers(res.data))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
 
-  const filtered = mockData.workers.filter(w => {
-    const matchSkill = skillFilter === 'All' || w.skill === skillFilter;
-    const matchStatus = statusFilter === 'All' || w.status === statusFilter;
+  const filtered = workers.filter(w => {
+    const workerSkill = w.skills?.[0]?.category?.name || 'Unknown';
+    const matchSkill = skillFilter === 'All' || workerSkill.toLowerCase().includes(skillFilter.toLowerCase());
+    
+    // Status mapping: provisional/verified/suspended/banned
+    let displayStatus = 'Pending';
+    if (w.status === 'verified') displayStatus = 'Verified';
+    if (w.status === 'suspended') displayStatus = 'Suspended';
+    if (w.status === 'banned') displayStatus = 'Suspended';
+
+    const matchStatus = statusFilter === 'All' || displayStatus === statusFilter;
     return matchSkill && matchStatus;
   });
 
-  const handleToggleSuspend = () => {
-    if (selectedWorker.status !== 'Suspended') {
-      setShowSuspendModal(true);
-    } else {
-      // TODO: PATCH /admin/workers/:id/unsuspend
-      alert('Worker unsuspended.');
-      setSelectedWorker({ ...selectedWorker, status: 'Verified' });
+  const handleToggleStatus = async () => {
+    try {
+      if (selectedWorker.status === 'verified') {
+        setShowSuspendModal(true);
+      } else {
+        await api.patch(`/admin/workers/${selectedWorker.id}/status`, { status: 'verified' });
+        setWorkers(workers.map(w => w.id === selectedWorker.id ? { ...w, status: 'verified' } : w));
+        setSelectedWorker({ ...selectedWorker, status: 'verified' });
+        alert('Worker unsuspended.');
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to update status');
     }
   };
 
-  const handleConfirmSuspend = () => {
-    // TODO: PATCH /admin/workers/:id/suspend
-    alert('Worker suspended.');
-    setShowSuspendModal(false);
-    setSelectedWorker({ ...selectedWorker, status: 'Suspended' });
+  const handleConfirmSuspend = async () => {
+    try {
+      await api.patch(`/admin/workers/${selectedWorker.id}/status`, { status: 'suspended' });
+      setWorkers(workers.map(w => w.id === selectedWorker.id ? { ...w, status: 'suspended' } : w));
+      setShowSuspendModal(false);
+      setSelectedWorker({ ...selectedWorker, status: 'suspended' });
+      alert('Worker suspended.');
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to update status');
+    }
   };
 
   return (
@@ -82,26 +107,36 @@ export default function Workers() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(w => (
+              {loading ? (
+                <tr><td colSpan="7" className="p-8 text-center text-slate-400">Loading...</td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan="7" className="p-8 text-center text-slate-400">No workers found</td></tr>
+              ) : filtered.map(w => {
+                const workerSkill = w.skills?.[0]?.category?.name || 'None';
+                let displayStatus = 'Pending';
+                if (w.status === 'verified') displayStatus = 'Verified';
+                if (w.status === 'suspended' || w.status === 'banned') displayStatus = 'Suspended';
+
+                return (
                 <tr key={w.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
-                  <td className="p-4 font-bold text-slate-900">{w.name}</td>
+                  <td className="p-4 font-bold text-slate-900">{w.name || '—'}</td>
                   <td className="p-4 font-medium text-slate-700">
                     {w.phone}<br/>
-                    <span className="text-xs text-slate-500">{w.city}</span>
+                    <span className="text-xs text-slate-500">{w.city || '—'}</span>
                   </td>
-                  <td className="p-4 font-bold text-slate-900">{w.skill}</td>
+                  <td className="p-4 font-bold text-slate-900">{workerSkill}</td>
                   <td className="p-4 font-bold text-slate-900 flex items-center gap-1">
-                    <span className="text-amber-500">★</span> {w.rating} <span className="text-slate-400 font-medium text-xs ml-1">({w.jobs} jobs)</span>
+                    <span className="text-amber-500">★</span> {(w.avgRating || 0).toFixed(1)} <span className="text-slate-400 font-medium text-xs ml-1">({w._count?.bookings || 0} jobs)</span>
                   </td>
                   <td className="p-4">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold tracking-wide ${w.status === 'Verified' ? 'bg-green-100 text-green-700' : w.status === 'Suspended' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
-                      {w.status}
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold tracking-wide ${displayStatus === 'Verified' ? 'bg-green-100 text-green-700' : displayStatus === 'Suspended' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {displayStatus}
                     </span>
                   </td>
                   <td className="p-4">
                     <div className="flex items-center gap-1.5">
-                      <div className={`w-2 h-2 rounded-full ${w.availability === 'Online' ? 'bg-green-500' : 'bg-slate-300'}`}></div>
-                      <span className="text-xs font-bold text-slate-700">{w.availability}</span>
+                      <div className={`w-2 h-2 rounded-full ${w.isAvailable ? 'bg-green-500' : 'bg-slate-300'}`}></div>
+                      <span className="text-xs font-bold text-slate-700">{w.isAvailable ? 'Online' : 'Offline'}</span>
                     </div>
                   </td>
                   <td className="p-4 text-right">
@@ -113,7 +148,7 @@ export default function Workers() {
                     </button>
                   </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </div>
@@ -131,27 +166,27 @@ export default function Workers() {
             
             <div className="p-6 flex-1 overflow-y-auto flex flex-col gap-6">
               <div className="flex items-center gap-4">
-                <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center text-amber-700 text-xl font-bold">
-                  {selectedWorker.name.charAt(0)}
+                <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center text-amber-700 text-xl font-bold overflow-hidden">
+                  {selectedWorker.profilePhoto ? <img src={selectedWorker.profilePhoto} className="w-full h-full object-cover" /> : (selectedWorker.name?.charAt(0) || 'W')}
                 </div>
                 <div>
-                  <h3 className="text-xl font-extrabold text-slate-900">{selectedWorker.name}</h3>
-                  <p className="text-sm font-semibold text-slate-500">{selectedWorker.skill} • {selectedWorker.city}</p>
+                  <h3 className="text-xl font-extrabold text-slate-900">{selectedWorker.name || '—'}</h3>
+                  <p className="text-sm font-semibold text-slate-500">{selectedWorker.skills?.[0]?.category?.name || 'No skill'} • {selectedWorker.city || '—'}</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-3 gap-3">
                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center flex flex-col items-center justify-center">
-                  <span className="text-lg font-black text-slate-900 flex items-center gap-1">★ {selectedWorker.rating}</span>
+                  <span className="text-lg font-black text-slate-900 flex items-center gap-1">★ {(selectedWorker.avgRating || 0).toFixed(1)}</span>
                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mt-1">Rating</p>
                 </div>
                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center flex flex-col items-center justify-center">
-                  <p className="text-lg font-black text-slate-900">{selectedWorker.jobs}</p>
+                  <p className="text-lg font-black text-slate-900">{selectedWorker._count?.bookings || 0}</p>
                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mt-1">Jobs</p>
                 </div>
                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center flex flex-col items-center justify-center">
-                  <p className="text-lg font-black text-slate-900">₹45k</p>
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mt-1">Earned</p>
+                  <p className="text-lg font-black text-slate-900">{selectedWorker.totalJobs || 0}</p>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mt-1">Total</p>
                 </div>
               </div>
 
@@ -160,15 +195,19 @@ export default function Workers() {
                 <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col gap-3 shadow-sm">
                   <div className="flex justify-between items-center text-sm">
                     <span className="font-semibold text-slate-600">Aadhaar KYC</span>
-                    <span className="font-bold text-green-600 flex items-center gap-1"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg> Verified</span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="font-semibold text-slate-600">Skill Test Score</span>
-                    <span className="font-bold text-slate-900">85%</span>
+                    {selectedWorker.aadhaarVerified ? (
+                      <span className="font-bold text-green-600 flex items-center gap-1"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg> Verified</span>
+                    ) : (
+                      <span className="font-bold text-amber-600 flex items-center gap-1">Pending</span>
+                    )}
                   </div>
                   <div className="flex justify-between items-center text-sm">
                     <span className="font-semibold text-slate-600">Police Verification</span>
-                    <span className="font-bold text-amber-600">Pending</span>
+                    {selectedWorker.policeVerified ? (
+                      <span className="font-bold text-green-600 flex items-center gap-1"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg> Verified</span>
+                    ) : (
+                      <span className="font-bold text-amber-600 flex items-center gap-1">Pending</span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -176,25 +215,17 @@ export default function Workers() {
               <div>
                 <h4 className="font-bold text-slate-900 mb-3 text-sm">Recent Jobs</h4>
                 <div className="flex flex-col gap-3">
-                  {[1, 2].map(i => (
-                    <div key={i} className="bg-white border border-slate-200 p-3 rounded-xl flex justify-between items-center shadow-sm">
-                      <div>
-                        <p className="text-sm font-bold text-slate-900">Tap Repair</p>
-                        <p className="text-xs font-medium text-slate-500">12 Oct 2023</p>
-                      </div>
-                      <span className="text-sm font-extrabold text-green-600">Completed</span>
-                    </div>
-                  ))}
+                  <p className="text-slate-500 text-sm italic">Detailed booking history is available in the Bookings tab.</p>
                 </div>
               </div>
             </div>
 
             <div className="p-6 border-t border-slate-100 bg-slate-50">
               <button 
-                onClick={handleToggleSuspend}
-                className={`w-full font-bold py-3 rounded-xl border transition-colors ${selectedWorker.status !== 'Suspended' ? 'bg-white border-red-200 text-red-600 hover:bg-red-50' : 'bg-indigo-600 text-white hover:bg-indigo-700 border-indigo-600'}`}
+                onClick={handleToggleStatus}
+                className={`w-full font-bold py-3 rounded-xl border transition-colors ${selectedWorker.status === 'verified' ? 'bg-white border-amber-200 text-amber-600 hover:bg-amber-50' : 'bg-green-600 text-white hover:bg-green-700'}`}
               >
-                {selectedWorker.status !== 'Suspended' ? 'Suspend Worker' : 'Unsuspend Worker'}
+                {selectedWorker.status === 'verified' ? 'Suspend Worker' : 'Unsuspend Worker'}
               </button>
             </div>
           </div>

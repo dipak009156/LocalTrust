@@ -1,12 +1,18 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useState, useRef } from 'react';
+import api from '../../utils/api';
 
 export default function DisputeResponse() {
-  const navigate = useNavigate();
-  const fileInputRef = useRef(null);
+  const navigate  = useNavigate();
+  const location  = useLocation();
+  const bookingId = location.state?.bookingId;
+
+  const fileInputRef  = useRef(null);
   const [photoPreview, setPhotoPreview] = useState(null);
-  const [response, setResponse] = useState('');
-  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [response,     setResponse]     = useState('');
+  const [loading,      setLoading]      = useState(false);
+  const [error,        setError]        = useState('');
+  const [isSubmitted,  setIsSubmitted]  = useState(false);
 
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -14,9 +20,21 @@ export default function DisputeResponse() {
     }
   };
 
-  const handleSubmit = () => {
-    // TODO: PATCH /disputes/:id/respond
-    setIsSubmitted(true);
+  const handleSubmit = async () => {
+    if (!bookingId) { setError('Booking ID missing.'); return; }
+    if (response.length < 10) return;
+    setLoading(true);
+    setError('');
+    try {
+      await api.patch(`/dispute/${bookingId}/respond`, {
+        workerResponse: response,
+      });
+      setIsSubmitted(true);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to submit response.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (isSubmitted) {
@@ -96,13 +114,15 @@ export default function DisputeResponse() {
         </div>
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 p-6 bg-white border-t border-gray-100">
-        <button 
-          onClick={handleSubmit} 
-          disabled={response.length < 10}
-          className={`w-full font-bold py-4 rounded-2xl shadow-lg transition-colors ${response.length >= 10 ? 'bg-blue-700 text-white shadow-blue-200 hover:bg-blue-800' : 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'}`}
+      <div className="absolute bottom-0 left-0 right-0 p-6 bg-white border-t border-gray-100 flex flex-col gap-2">
+        {error && <p className="text-red-500 text-sm font-semibold text-center">{error}</p>}
+        <button
+          onClick={handleSubmit}
+          disabled={response.length < 10 || loading}
+          className={`w-full font-bold py-4 rounded-2xl shadow-lg transition-colors flex items-center justify-center gap-2 ${response.length >= 10 && !loading ? 'bg-blue-700 text-white shadow-blue-200 hover:bg-blue-800' : 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'}`}
         >
-          Submit Evidence
+          {loading && <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>}
+          {loading ? 'Submitting…' : 'Submit Evidence'}
         </button>
       </div>
     </div>

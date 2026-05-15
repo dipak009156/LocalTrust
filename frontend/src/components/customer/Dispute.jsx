@@ -1,14 +1,43 @@
-import { useNavigate } from 'react-router-dom';
-import { useRef, useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useState } from 'react';
+import api from '../../utils/api';
+
+const REASONS = [
+  'Job not completed properly',
+  'Worker asked for more money',
+  'Unprofessional behavior',
+  'Worker didn\'t show up',
+  'Damage caused to property',
+  'Other',
+];
 
 export default function Dispute() {
-  const navigate = useNavigate();
-  const fileInputRef = useRef(null);
-  const [fileName, setFileName] = useState('');
+  const navigate  = useNavigate();
+  const location  = useLocation();
+  const bookingId = location.state?.bookingId;
 
-  const handleFileChange = (e) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setFileName(e.target.files[0].name);
+  const [reason,   setReason]   = useState(REASONS[0]);
+  const [desc,     setDesc]     = useState('');
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState('');
+
+  const handleSubmit = async () => {
+    if (!bookingId) {
+      setError('Booking ID is missing. Please go back and try again.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      await api.post('/dispute', {
+        bookingId,
+        reason: desc ? `${reason} — ${desc}` : reason,
+      });
+      navigate('/customer/dispute-status', { state: { bookingId } });
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to submit dispute. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -32,41 +61,38 @@ export default function Dispute() {
 
         <div>
           <label className="text-sm font-extrabold text-gray-900 mb-2 block">Reason</label>
-          <select className="w-full bg-white border border-gray-200 rounded-2xl p-4 text-sm font-semibold text-gray-900 outline-none focus:border-blue-700">
-            <option>Job not completed properly</option>
-            <option>Worker asked for more money</option>
-            <option>Unprofessional behavior</option>
-            <option>Worker didn't show up</option>
+          <select
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+            className="w-full bg-white border border-gray-200 rounded-2xl p-4 text-sm font-semibold text-gray-900 outline-none focus:border-blue-700"
+          >
+            {REASONS.map(r => <option key={r}>{r}</option>)}
           </select>
         </div>
 
         <div>
-          <label className="text-sm font-extrabold text-gray-900 mb-2 block">Upload Evidence</label>
-          <input 
-            type="file" 
-            className="hidden" 
-            ref={fileInputRef} 
-            onChange={handleFileChange}
-            accept="image/*,video/*"
+          <label className="text-sm font-extrabold text-gray-900 mb-2 block">Description (optional)</label>
+          <textarea
+            value={desc}
+            onChange={e => setDesc(e.target.value)}
+            className="w-full bg-white border border-gray-200 rounded-2xl p-4 text-sm font-medium text-gray-900 outline-none focus:border-blue-700 h-32 resize-none"
+            placeholder="Provide more details about the issue..."
           />
-          <div 
-            onClick={() => fileInputRef.current.click()}
-            className="w-24 h-24 bg-gray-50 border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center text-gray-400 gap-1 hover:border-blue-700 hover:text-blue-700 cursor-pointer transition-colors"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-            <span className="text-xs font-bold text-center px-1 truncate w-full">{fileName || 'Add Media'}</span>
-          </div>
         </div>
 
-        <div>
-          <label className="text-sm font-extrabold text-gray-900 mb-2 block">Description</label>
-          <textarea className="w-full bg-white border border-gray-200 rounded-2xl p-4 text-sm font-medium text-gray-900 outline-none focus:border-blue-700 h-32 resize-none" placeholder="Provide details about the issue..."></textarea>
-        </div>
+        {error && <p className="text-red-500 text-sm font-semibold">{error}</p>}
       </div>
 
       <div className="absolute bottom-0 left-0 right-0 p-6 bg-white border-t border-gray-100">
-        <button onClick={() => navigate('/customer/dispute-status')} className="w-full bg-red-600 text-white font-bold py-4 rounded-2xl shadow-lg shadow-red-200 hover:bg-red-700 transition-colors">
-          Submit Dispute
+        <button
+          onClick={handleSubmit}
+          disabled={loading}
+          className="w-full bg-red-600 text-white font-bold py-4 rounded-2xl shadow-lg shadow-red-200 hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+        >
+          {loading ? (
+            <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+          ) : null}
+          {loading ? 'Submitting…' : 'Submit Dispute'}
         </button>
       </div>
     </div>

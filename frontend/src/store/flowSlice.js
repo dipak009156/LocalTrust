@@ -22,6 +22,9 @@ const initialState = {
 
   // Location step (WORKER)
   radius: 10,
+  homeLat: null,
+  homeLng: null,
+  homeAddress: '',
 
   // Skills step (WORKER)
   selectedSkills: [],
@@ -64,6 +67,11 @@ const flowSlice = createSlice({
     resetResend(state) { state.resendTimer = 30; },
     setProfile(state, action) { state.profile = action.payload; },
     setRadius(state, action) { state.radius = action.payload; },
+    setLocation(state, action) {
+      state.homeLat     = action.payload.lat;
+      state.homeLng     = action.payload.lng;
+      state.homeAddress = action.payload.address ?? '';
+    },
     toggleSkill(state, action) {
       const id = action.payload;
       if (state.selectedSkills.includes(id)) {
@@ -91,7 +99,7 @@ const flowSlice = createSlice({
 export const {
   setStep, setPhone, validatePhone, setLoading, setPhoneError,
   goToOtp, handleOtpInput, setOtpError, setOtpShake, tickResend, resetResend,
-  setProfile, setRadius, toggleSkill, startTest, selectAnswer, nextQuestion,
+  setProfile, setRadius, setLocation, toggleSkill, startTest, selectAnswer, nextQuestion,
   setKyc, resetFlow,
 } = flowSlice.actions;
 

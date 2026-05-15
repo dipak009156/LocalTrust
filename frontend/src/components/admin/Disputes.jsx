@@ -1,25 +1,38 @@
-import { useState } from 'react';
-import { mockData } from '../../utils/mockData';
+import { useState, useEffect } from 'react';
+import api from '../../utils/api';
 import { useAdmin } from '../../context/AdminContext';
 
 export default function Disputes() {
   const { activeDisputes, setActiveDisputes } = useAdmin();
   const [tab, setTab] = useState('Open');
-  const [items, setItems] = useState(mockData.disputes.map(d => ({ ...d, status: 'Open' })));
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
   
   const [splitModalData, setSplitModalData] = useState(null);
   const [customerRefund, setCustomerRefund] = useState('');
   const [workerRelease, setWorkerRelease] = useState('');
 
-  // TODO: GET /admin/disputes
+  useEffect(() => {
+    api.get('/admin/disputes')
+      .then(res => {
+        setItems(res.data);
+        setActiveDisputes(res.data.filter(d => d.outcome === 'pending').length);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [setActiveDisputes]);
 
-  const filtered = items.filter(d => d.status === tab);
+  const filtered = items.filter(d => tab === 'Open' ? d.outcome === 'pending' : d.outcome !== 'pending');
 
-  const handleResolve = (id, resolution) => {
-    // TODO: PATCH /admin/disputes/:id/resolve
-    setItems(items.map(i => i.id === id ? { ...i, status: 'Resolved', resolution } : i));
-    setActiveDisputes(prev => prev > 0 ? prev - 1 : 0);
-    alert(`Dispute resolved - ${resolution}`);
+  const handleResolve = async (id, outcome, adminNote) => {
+    try {
+      await api.patch(`/admin/disputes/${id}/resolve`, { outcome, adminNote });
+      setItems(items.map(i => i.id === id ? { ...i, outcome, adminNote } : i));
+      setActiveDisputes(prev => prev > 0 ? prev - 1 : 0);
+      alert(`Dispute resolved.`);
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to resolve dispute');
+    }
   };
 
   const handleOpenSplitModal = (dispute) => {
@@ -30,11 +43,11 @@ export default function Disputes() {
 
   const handleConfirmSplit = () => {
     const total = parseFloat(customerRefund || 0) + parseFloat(workerRelease || 0);
-    if (total !== splitModalData.amount) {
-      alert(`Amounts must add up to ₹${splitModalData.amount}`);
+    if (total !== splitModalData.booking?.basePrice) {
+      alert(`Amounts must add up to ₹${splitModalData.booking?.basePrice}`);
       return;
     }
-    handleResolve(splitModalData.id, `Split: ₹${customerRefund} to Customer, ₹${workerRelease} to Worker`);
+    handleResolve(splitModalData.id, 'split', `Split: ₹${customerRefund} to Customer, ₹${workerRelease} to Worker`);
     setSplitModalData(null);
   };
 
@@ -61,7 +74,9 @@ export default function Disputes() {
         </div>
 
         <div className="flex-1 overflow-auto p-6 flex flex-col gap-6 bg-slate-50/30">
-          {filtered.length === 0 ? (
+          {loading ? (
+            <div className="flex flex-col items-center justify-center h-full text-center text-slate-400">Loading...</div>
+          ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center text-slate-400">
               <svg className="w-16 h-16 mb-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
               <h3 className="text-xl font-bold text-slate-600 mb-1">No {tab.toLowerCase()} disputes</h3>
@@ -74,14 +89,14 @@ export default function Disputes() {
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <span className="bg-red-50 text-red-700 border border-red-100 px-2.5 py-0.5 rounded-md text-xs font-bold tracking-wide">Disputed</span>
-                      <span className="text-sm font-bold text-slate-900">Booking #{d.bookingId}</span>
-                      <span className="text-slate-400 text-xs font-bold">• {d.time}</span>
+                      <span className="text-sm font-bold text-slate-900">Booking #{d.booking?.id?.substring(0,8)}</span>
+                      <span className="text-slate-400 text-xs font-bold">• {new Date(d.createdAt).toLocaleString()}</span>
                     </div>
-                    <h3 className="text-xl font-extrabold text-slate-900">{d.service}</h3>
+                    <h3 className="text-xl font-extrabold text-slate-900">{d.booking?.category?.name || 'Service'}</h3>
                   </div>
                   <div className="text-right">
                     <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-0.5">Escrow Locked</p>
-                    <p className="text-2xl font-black text-red-600">₹{d.amount}</p>
+                    <p className="text-2xl font-black text-red-600">₹{d.booking?.basePrice}</p>
                   </div>
                 </div>
 
@@ -89,7 +104,7 @@ export default function Disputes() {
                   {/* Customer Side */}
                   <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100">
                     <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Customer Claim</p>
-                    <p className="font-bold text-slate-900 mb-1">{d.customer}</p>
+                    <p className="font-bold text-slate-900 mb-1">{d.booking?.user?.name || 'Customer'}</p>
                     <p className="text-sm font-medium text-slate-700 italic mb-4">"{d.reason}"</p>
                     
                     <p className="text-xs font-bold text-slate-500 mb-2">Evidence Provided</p>
@@ -101,8 +116,8 @@ export default function Disputes() {
                   {/* Worker Side */}
                   <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100">
                     <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Worker Response</p>
-                    <p className="font-bold text-slate-900 mb-1">{d.worker}</p>
-                    <p className="text-sm font-medium text-slate-700 italic mb-4">"{d.workerResponse}"</p>
+                    <p className="font-bold text-slate-900 mb-1">{d.booking?.worker?.name || 'Worker'}</p>
+                    <p className="text-sm font-medium text-slate-700 italic mb-4">"{d.workerResponse || 'No response yet.'}"</p>
                     
                     <p className="text-xs font-bold text-slate-500 mb-2">Evidence Provided</p>
                     <div className="h-24 bg-white rounded-xl border border-slate-200 flex items-center justify-center text-slate-400 text-xs font-bold cursor-pointer hover:border-indigo-500 transition-colors">
@@ -113,20 +128,20 @@ export default function Disputes() {
 
                 {tab === 'Open' ? (
                   <div className="flex gap-3 pt-4 border-t border-slate-100">
-                    <button onClick={() => handleResolve(d.id, 'Refund Customer')} className="flex-1 bg-white border border-red-200 text-red-600 font-bold py-3 rounded-xl hover:bg-red-50 transition-colors">
-                      Refund Customer (₹{d.amount})
+                    <button onClick={() => handleResolve(d.id, 'refunded_to_user', 'Full refund to customer')} className="flex-1 bg-white border border-red-200 text-red-600 font-bold py-3 rounded-xl hover:bg-red-50 transition-colors">
+                      Refund Customer (₹{d.booking?.basePrice})
                     </button>
                     <button onClick={() => handleOpenSplitModal(d)} className="flex-1 bg-white border border-amber-200 text-amber-600 font-bold py-3 rounded-xl hover:bg-amber-50 transition-colors">
                       Split Payment
                     </button>
-                    <button onClick={() => handleResolve(d.id, 'Release to Worker')} className="flex-1 bg-green-600 text-white font-bold py-3 rounded-xl shadow-md hover:bg-green-700 transition-colors">
-                      Release to Worker (₹{d.amount})
+                    <button onClick={() => handleResolve(d.id, 'released_to_worker', 'Released full amount to worker')} className="flex-1 bg-green-600 text-white font-bold py-3 rounded-xl shadow-md hover:bg-green-700 transition-colors">
+                      Release to Worker (₹{d.booking?.basePrice})
                     </button>
                   </div>
                 ) : (
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex items-center gap-2">
                     <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                    <span className="font-bold text-slate-700 text-sm">Resolution: {d.resolution}</span>
+                    <span className="font-bold text-slate-700 text-sm">Resolution: {d.adminNote || d.outcome}</span>
                   </div>
                 )}
               </div>
@@ -140,7 +155,7 @@ export default function Disputes() {
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95">
             <h3 className="text-xl font-extrabold text-slate-900 mb-2">Split Payment</h3>
-            <p className="text-sm text-slate-500 font-medium mb-6">Allocate the ₹{splitModalData.amount} locked in escrow.</p>
+            <p className="text-sm text-slate-500 font-medium mb-6">Allocate the ₹{splitModalData.booking?.basePrice} locked in escrow.</p>
             
             <div className="flex gap-4 mb-6">
               <div className="flex-1">

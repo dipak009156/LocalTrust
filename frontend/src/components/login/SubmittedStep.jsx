@@ -1,4 +1,18 @@
+import { useNavigate } from 'react-router-dom';
+import { useDispatch } from 'react-redux';
+import { logout } from '../../store/authSlice';
+import { clearToken } from '../../firebase/auth';
+
 export default function SubmittedStep() {
+  const navigate = useNavigate();
+  const dispatch = useDispatch();
+
+  const handleHome = () => {
+    clearToken();
+    dispatch(logout());
+    navigate('/');
+  };
+
   return (
     <div className="text-center space-y-6 py-4">
       <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto text-4xl">
@@ -20,9 +34,12 @@ export default function SubmittedStep() {
           </div>
         ))}
       </div>
-      <a href="/" className="inline-block w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-base transition-all text-center">
+      <button
+        onClick={handleHome}
+        className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-base transition-all"
+      >
         Back to Home
-      </a>
+      </button>
     </div>
   );
 }

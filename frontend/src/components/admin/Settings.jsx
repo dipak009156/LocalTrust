@@ -1,17 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import api from '../../utils/api';
 
 export default function Settings() {
   const [commission, setCommission] = useState(10);
-  const [categories, setCategories] = useState([
-    { id: 1, name: 'Plumbing', emoji: '💧' },
-    { id: 2, name: 'Electrical', emoji: '⚡' },
-    { id: 3, name: 'Cleaning', emoji: '🧹' },
-    { id: 4, name: 'AC Repair', emoji: '❄️' }
-  ]);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
   
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [newCatEmoji, setNewCatEmoji] = useState('');
+  const [newCatParent, setNewCatParent] = useState('');
+  const [newCatPrice, setNewCatPrice] = useState('');
   
   const [toggles, setToggles] = useState({
     disputes: true,
@@ -21,23 +20,54 @@ export default function Settings() {
 
   const [showPassModal, setShowPassModal] = useState(false);
 
+  useEffect(() => {
+    fetchCategories();
+  }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const res = await api.get('/admin/categories');
+      setCategories(res.data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSaveCommission = () => {
     // TODO: PATCH /admin/settings
     alert('Commission rate saved.');
   };
 
-  const handleAddCategory = () => {
-    if (!newCatName || !newCatEmoji) return;
-    setCategories([...categories, { id: Date.now(), name: newCatName, emoji: newCatEmoji }]);
-    setShowAddCategory(false);
-    setNewCatName('');
-    setNewCatEmoji('');
-    // TODO: POST /admin/categories
+  const handleAddCategory = async () => {
+    if (!newCatName) return;
+    try {
+      await api.post('/admin/categories', {
+        name: newCatName,
+        iconUrl: newCatEmoji || null,
+        parentId: newCatParent || null,
+        fixedPrice: newCatPrice ? parseFloat(newCatPrice) : null
+      });
+      fetchCategories();
+      setShowAddCategory(false);
+      setNewCatName('');
+      setNewCatEmoji('');
+      setNewCatParent('');
+      setNewCatPrice('');
+    } catch (err) {
+      alert('Failed to add category');
+    }
   };
 
-  const handleRemoveCategory = (id) => {
-    setCategories(categories.filter(c => c.id !== id));
-    // TODO: DELETE /admin/categories/:id
+  const handleRemoveCategory = async (id) => {
+    if (!window.confirm('Are you sure? This will delete the category and all sub-categories.')) return;
+    try {
+      await api.delete(`/admin/categories/${id}`);
+      fetchCategories();
+    } catch (err) {
+      alert('Failed to delete category');
+    }
   };
 
   const handleToggle = (key) => {
@@ -81,14 +111,25 @@ export default function Settings() {
               <button onClick={() => setShowAddCategory(true)} className="text-indigo-600 font-bold text-sm hover:underline">+ Add New</button>
             </div>
             
-            <div className="flex flex-col gap-3">
-              {categories.map(c => (
-                <div key={c.id} className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-lg shadow-sm">{c.emoji}</div>
-                    <span className="font-bold text-slate-900">{c.name}</span>
+            <div className="flex flex-col gap-3 max-h-[400px] overflow-y-auto pr-2">
+              {loading ? <p className="text-slate-400 text-sm">Loading...</p> : categories.map(c => (
+                <div key={c.id} className="flex flex-col gap-2">
+                  <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-lg shadow-sm">{c.iconUrl || '📁'}</div>
+                      <span className="font-bold text-slate-900">{c.name}</span>
+                    </div>
+                    <button onClick={() => handleRemoveCategory(c.id)} className="text-red-500 hover:text-red-700 font-bold text-xs bg-red-50 px-2 py-1 rounded-md">Remove</button>
                   </div>
-                  <button onClick={() => handleRemoveCategory(c.id)} className="text-red-500 hover:text-red-700 font-bold text-xs bg-red-50 px-2 py-1 rounded-md">Remove</button>
+                  {/* Sub-categories */}
+                  <div className="ml-8 flex flex-col gap-2">
+                    {c.children?.map(sub => (
+                      <div key={sub.id} className="bg-white border border-slate-100 rounded-xl p-2.5 flex justify-between items-center text-sm">
+                        <span className="font-semibold text-slate-700">{sub.name} <span className="text-xs text-slate-400 font-medium ml-2">₹{sub.fixedPrice}</span></span>
+                        <button onClick={() => handleRemoveCategory(sub.id)} className="text-slate-400 hover:text-red-500 font-bold text-[10px] uppercase">Remove</button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -158,27 +199,57 @@ export default function Settings() {
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95">
             <h3 className="text-xl font-extrabold text-slate-900 mb-4">Add Category</h3>
             
-            <div className="flex gap-3 mb-6">
-              <div className="w-20">
-                <label className="text-xs font-bold text-slate-900 mb-2 block">Emoji</label>
-                <input 
-                  type="text" 
-                  value={newCatEmoji}
-                  onChange={(e) => setNewCatEmoji(e.target.value)}
-                  placeholder="💧"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-center text-lg outline-none focus:border-indigo-600"
-                />
+            <div className="flex flex-col gap-4 mb-6">
+              <div className="flex gap-3">
+                <div className="w-20">
+                  <label className="text-xs font-bold text-slate-900 mb-2 block">Emoji/Icon</label>
+                  <input 
+                    type="text" 
+                    value={newCatEmoji}
+                    onChange={(e) => setNewCatEmoji(e.target.value)}
+                    placeholder="💧"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-center text-lg outline-none focus:border-indigo-600"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-xs font-bold text-slate-900 mb-2 block">Name</label>
+                  <input 
+                    type="text" 
+                    value={newCatName}
+                    onChange={(e) => setNewCatName(e.target.value)}
+                    placeholder="e.g. Plumbing"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-bold text-slate-900 outline-none focus:border-indigo-600"
+                  />
+                </div>
               </div>
-              <div className="flex-1">
-                <label className="text-xs font-bold text-slate-900 mb-2 block">Name</label>
-                <input 
-                  type="text" 
-                  value={newCatName}
-                  onChange={(e) => setNewCatName(e.target.value)}
-                  placeholder="e.g. Plumbing"
+
+              <div>
+                <label className="text-xs font-bold text-slate-900 mb-2 block">Parent Category (Optional)</label>
+                <select 
+                  value={newCatParent}
+                  onChange={(e) => setNewCatParent(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-bold text-slate-900 outline-none focus:border-indigo-600"
-                />
+                >
+                  <option value="">None (Make it a Parent)</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
               </div>
+
+              {newCatParent && (
+                <div>
+                  <label className="text-xs font-bold text-slate-900 mb-2 block">Fixed Price (for Sub-category)</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">₹</span>
+                    <input 
+                      type="number" 
+                      value={newCatPrice}
+                      onChange={(e) => setNewCatPrice(e.target.value)}
+                      placeholder="299"
+                      className="w-full pl-8 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 outline-none focus:border-indigo-600"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-3">

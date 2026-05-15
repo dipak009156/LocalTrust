@@ -1,12 +1,33 @@
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { mockData } from '../../utils/mockData';
+import api from '../../utils/api';
 
 export default function BookingDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  // TODO: GET /admin/bookings/:id
-  const booking = mockData.bookings.find(b => b.id === id) || mockData.bookings[0];
+  const [booking, setBooking] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get(`/admin/bookings/${id}`)
+      .then(res => setBooking(res.data))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  if (loading) return <div className="p-8 text-slate-500">Loading booking...</div>;
+  if (!booking) return <div className="p-8 text-slate-500">Booking not found.</div>;
+
+  const displayStatus = booking.status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+  let escrowStatus = 'Locked';
+  if (booking.status === 'completed' || booking.status === 'resolved') escrowStatus = 'Released';
+  if (booking.status === 'cancelled') escrowStatus = 'Refunded';
+
+  const customerName = booking.user?.name || booking.user?.phone || 'Unknown';
+  const workerName = booking.worker?.name || booking.worker?.phone || 'Unassigned';
+  const serviceName = booking.category?.name || '—';
+  const dateStr = new Date(booking.createdAt).toLocaleDateString();
 
   return (
     <div className="flex flex-col gap-6 relative h-full">
@@ -15,12 +36,12 @@ export default function BookingDetail() {
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
         </button>
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Booking #{booking.id}</h1>
-          <p className="text-slate-500 font-medium mt-0.5">{booking.date} • {booking.service}</p>
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Booking #{booking.id.substring(0, 8)}</h1>
+          <p className="text-slate-500 font-medium mt-0.5">{dateStr} • {serviceName}</p>
         </div>
       </div>
 
-      {booking.status === 'Disputed' && (
+      {booking.status === 'disputed' && (
         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex justify-between items-center shadow-sm">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-red-100 text-red-600 rounded-full flex items-center justify-center">
@@ -37,14 +58,14 @@ export default function BookingDetail() {
         </div>
       )}
 
-      {booking.status === 'Completed' && (
+      {booking.status === 'completed' && (
         <div className="bg-green-50 border border-green-200 rounded-2xl p-4 flex items-center gap-3 shadow-sm">
           <div className="w-10 h-10 bg-green-100 text-green-600 rounded-full flex items-center justify-center">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
           </div>
           <div>
             <p className="font-bold text-green-900">Completed & Confirmed</p>
-            <p className="text-sm font-medium text-green-700">Escrow released to worker on {booking.date}</p>
+            <p className="text-sm font-medium text-green-700">Escrow released to worker on {dateStr}</p>
           </div>
         </div>
       )}
@@ -79,17 +100,17 @@ export default function BookingDetail() {
                 </div>
               </div>
               <div className="flex gap-4 relative z-10">
-                <div className={`w-6 h-6 rounded-full border-4 border-white shrink-0 ${['Completed', 'Disputed', 'In Progress'].includes(booking.status) ? 'bg-indigo-600' : 'bg-slate-200'}`}></div>
+                <div className={`w-6 h-6 rounded-full border-4 border-white shrink-0 ${['completed', 'disputed', 'in_progress'].includes(booking.status) ? 'bg-indigo-600' : 'bg-slate-200'}`}></div>
                 <div>
-                  <p className={`text-sm font-bold ${['Completed', 'Disputed', 'In Progress'].includes(booking.status) ? 'text-slate-900' : 'text-slate-400'}`}>OTP Verified</p>
-                  <p className="text-xs text-slate-500 font-medium">10:45 AM</p>
+                  <p className={`text-sm font-bold ${['completed', 'disputed', 'in_progress'].includes(booking.status) ? 'text-slate-900' : 'text-slate-400'}`}>OTP Verified</p>
+                  <p className="text-xs text-slate-500 font-medium">--:--</p>
                 </div>
               </div>
               <div className="flex gap-4 relative z-10">
-                <div className={`w-6 h-6 rounded-full border-4 border-white shrink-0 ${booking.status === 'Completed' ? 'bg-green-500' : booking.status === 'Disputed' ? 'bg-red-500' : 'bg-slate-200'}`}></div>
+                <div className={`w-6 h-6 rounded-full border-4 border-white shrink-0 ${booking.status === 'completed' ? 'bg-green-500' : booking.status === 'disputed' ? 'bg-red-500' : 'bg-slate-200'}`}></div>
                 <div>
-                  <p className={`text-sm font-bold ${booking.status === 'Completed' ? 'text-green-700' : booking.status === 'Disputed' ? 'text-red-700' : 'text-slate-400'}`}>
-                    {booking.status === 'Disputed' ? 'Disputed' : 'Completed'}
+                  <p className={`text-sm font-bold ${booking.status === 'completed' ? 'text-green-700' : booking.status === 'disputed' ? 'text-red-700' : 'text-slate-400'}`}>
+                    {booking.status === 'disputed' ? 'Disputed' : 'Completed'}
                   </p>
                 </div>
               </div>
@@ -101,21 +122,21 @@ export default function BookingDetail() {
             <div className="flex flex-col gap-3">
               <div className="flex justify-between text-sm font-semibold text-slate-600">
                 <span>Gross Amount Paid</span>
-                <span>₹{booking.price}</span>
+                <span>₹{booking.basePrice}</span>
               </div>
               <div className="flex justify-between text-sm font-semibold text-slate-600">
                 <span>Platform Commission (10%)</span>
-                <span>₹{(booking.price * 0.1).toFixed(0)}</span>
+                <span>₹{(booking.basePrice * 0.1).toFixed(0)}</span>
               </div>
               <div className="h-px w-full bg-slate-100 my-1"></div>
               <div className="flex justify-between text-base font-black text-slate-900">
                 <span>Net Worker Payout</span>
-                <span className="text-green-600">₹{(booking.price * 0.9).toFixed(0)}</span>
+                <span className="text-green-600">₹{(booking.basePrice * 0.9).toFixed(0)}</span>
               </div>
               <div className="mt-3 bg-slate-50 p-3 rounded-xl border border-slate-100 flex justify-between items-center text-sm font-bold">
                 <span className="text-slate-600">Escrow Status</span>
-                <span className={`uppercase tracking-widest text-[10px] ${booking.escrow === 'Released' ? 'text-green-600' : booking.escrow === 'Locked' ? 'text-red-600' : 'text-slate-500'}`}>
-                  {booking.escrow}
+                <span className={`uppercase tracking-widest text-[10px] ${escrowStatus === 'Released' ? 'text-green-600' : escrowStatus === 'Locked' ? 'text-red-600' : 'text-slate-500'}`}>
+                  {escrowStatus}
                 </span>
               </div>
             </div>
@@ -129,11 +150,10 @@ export default function BookingDetail() {
               <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Customer</p>
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-bold text-lg">
-                  {booking.customer.charAt(0)}
+                  {customerName.charAt(0)}
                 </div>
                 <div>
-                  <p className="font-bold text-slate-900">{booking.customer}</p>
-                  <button className="text-indigo-600 text-xs font-bold hover:underline">View Profile</button>
+                  <p className="font-bold text-slate-900">{customerName}</p>
                 </div>
               </div>
             </div>
@@ -142,17 +162,16 @@ export default function BookingDetail() {
               <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Service Provider</p>
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center font-bold text-lg">
-                  {booking.worker.charAt(0)}
+                  {workerName.charAt(0)}
                 </div>
                 <div>
-                  <p className="font-bold text-slate-900">{booking.worker}</p>
-                  <button className="text-indigo-600 text-xs font-bold hover:underline">View Profile</button>
+                  <p className="font-bold text-slate-900">{workerName}</p>
                 </div>
               </div>
             </div>
           </div>
 
-          {(booking.status === 'Completed' || booking.status === 'Disputed') && (
+          {(booking.status === 'completed' || booking.status === 'disputed') && (
             <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6">
               <h3 className="font-extrabold text-slate-900 mb-4 text-lg">Proof of Work</h3>
               <div className="grid grid-cols-2 gap-4">

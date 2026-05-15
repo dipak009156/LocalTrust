@@ -1,10 +1,13 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
-import BottomNav from '../customer/BottomNav'; // We'll eventually make this generic
+import CustomerBottomNav from '../customer/BottomNav';
+import WorkerBottomNav from '../worker/BottomNav';
 
 export default function ResponsiveLayout({ children, role = 'customer' }) {
   const location = useLocation();
+
+  const BottomNav = role === 'worker' ? WorkerBottomNav : CustomerBottomNav;
 
   return (
     <div className="min-h-screen bg-gray-50 flex overflow-hidden">
@@ -15,8 +18,8 @@ export default function ResponsiveLayout({ children, role = 'customer' }) {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 relative h-screen">
-        {/* Scrollable Container */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden relative">
+        {/* Scrollable Container — extra bottom padding on mobile for the nav bar */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden relative pb-16 lg:pb-0">
           <div className="max-w-7xl mx-auto min-h-full bg-white lg:shadow-sm">
             <AnimatePresence mode="wait">
               <motion.div
@@ -33,10 +36,9 @@ export default function ResponsiveLayout({ children, role = 'customer' }) {
           </div>
         </div>
 
-        {/* Mobile Bottom Navigation - Sticky at bottom */}
-        <div className="lg:hidden shrink-0">
-           {/* Note: We'll eventually move BottomNav logic here to avoid duplication in pages */}
-           {/* For now, we'll keep it as is but hide it on large screens inside the component itself */}
+        {/* Mobile Bottom Navigation — rendered once here for ALL pages */}
+        <div className="lg:hidden shrink-0 border-t border-gray-100 bg-white/80 backdrop-blur-md z-50">
+          <BottomNav />
         </div>
       </div>
     </div>

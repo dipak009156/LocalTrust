@@ -1,7 +1,43 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import api from '../../utils/api';
 
+/**
+ * OtpCheckin — shows the 4-digit check-in OTP to the customer.
+ * The worker enters this OTP on their screen to verify arrival.
+ */
 export default function OtpCheckin() {
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
+  const location  = useLocation();
+  const bookingId = location.state?.bookingId;
+
+  const [otp, setOtp]         = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  // Poll for booking.otpCode (set when worker accepts)
+  useEffect(() => {
+    if (!bookingId) return;
+
+    const fetchOtp = async () => {
+      try {
+        const { data } = await api.get(`/user/bookings/${bookingId}`);
+        if (data.otpCode) {
+          setOtp(String(data.otpCode).padStart(4, '0'));
+          setLoading(false);
+          // If job already started, go to in-progress
+          if (data.status === 'in_progress') {
+            navigate('/customer/job-in-progress', { state: { bookingId } });
+          }
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    fetchOtp();
+    const interval = setInterval(fetchOtp, 3000);
+    return () => clearInterval(interval);
+  }, [bookingId, navigate]);
 
   return (
     <div className="flex flex-col h-full bg-white p-6">
@@ -11,24 +47,30 @@ export default function OtpCheckin() {
         </div>
 
         <h1 className="text-2xl font-extrabold text-gray-900 mb-2">Worker Arrived</h1>
-        <p className="text-gray-600 font-medium mb-8">Please share this secure PIN with Ramesh to start the job.</p>
+        <p className="text-gray-600 font-medium mb-8 max-w-xs">
+          Share this secure PIN with your worker to start the job.
+        </p>
 
-        <div className="flex gap-4 justify-center mb-8">
-          {['4', '9', '2', '1'].map((num, i) => (
-            <div key={i} className="w-16 h-20 bg-gray-50 border border-gray-200 rounded-2xl flex items-center justify-center text-4xl font-extrabold text-blue-700">
-              {num}
-            </div>
-          ))}
+        {loading ? (
+          <div className="flex gap-4 justify-center mb-8">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="w-16 h-20 bg-gray-100 border border-gray-200 rounded-2xl animate-pulse" />
+            ))}
+          </div>
+        ) : (
+          <div className="flex gap-4 justify-center mb-8">
+            {otp?.split('').map((num, i) => (
+              <div key={i} className="w-16 h-20 bg-gray-50 border border-gray-200 rounded-2xl flex items-center justify-center text-4xl font-extrabold text-blue-700">
+                {num}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="bg-orange-50 border border-orange-100 rounded-2xl p-4 flex gap-3 text-sm font-medium text-orange-900 text-left max-w-sm">
+          <svg className="w-5 h-5 shrink-0 text-orange-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+          Do not share this PIN until the worker is at your door.
         </div>
-
-        <div className="bg-orange-50 border border-orange-100 rounded-2xl p-4 flex gap-3 text-sm font-medium text-orange-900 text-left">
-          <svg className="w-5 h-5 shrink-0 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-          Do not share this PIN until you have verified the worker's identity at your door.
-        </div>
-
-        <button onClick={() => navigate('/customer/job-in-progress')} className="mt-8 text-sm text-gray-400 font-semibold underline">
-          [Simulate OTP Entered]
-        </button>
       </div>
     </div>
   );

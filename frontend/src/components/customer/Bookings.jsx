@@ -1,137 +1,132 @@
-import { Link, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
-import { X, Clock, CheckCircle2, AlertCircle, RotateCcw, Droplets, Zap, Wrench, ShowerHead } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { X, Clock, CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
+import api from '../../utils/api';
+
+const CATEGORY_ICONS = {
+  'Plumbing':'🚰','Electrical':'⚡','Cleaning':'🧹',
+  'AC Repair':'❄️','Carpentry':'🪚','Painting':'🎨',
+};
+
+const STATUS_CONFIG = {
+  pending:     { label: 'Pending',     color: 'bg-amber-100 text-amber-700', icon: Clock },
+  accepted:    { label: 'En Route',    color: 'bg-blue-100 text-blue-700',   icon: Clock },
+  in_progress: { label: 'In Progress', color: 'bg-green-100 text-green-700', icon: Clock },
+  completed:   { label: 'Completed',   color: 'bg-gray-100 text-gray-600',   icon: CheckCircle2 },
+  confirmed:   { label: 'Confirmed',   color: 'bg-green-100 text-green-700', icon: CheckCircle2 },
+  cancelled:   { label: 'Cancelled',   color: 'bg-gray-100 text-gray-500',   icon: XCircle },
+  disputed:    { label: 'Disputed',    color: 'bg-red-100 text-red-700',     icon: AlertCircle },
+};
+
+const ACTIVE_STATUSES = ['pending', 'accepted', 'in_progress', 'completed'];
 
 export default function Bookings() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState('active'); // 'active' or 'past'
+  const [tab, setTab]         = useState('active');
+  const [bookings, setBookings] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get('/user/bookings')
+      .then(r => setBookings(r.data))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const active = bookings.filter(b => ACTIVE_STATUSES.includes(b.status));
+  const past   = bookings.filter(b => !ACTIVE_STATUSES.includes(b.status));
+  const list   = tab === 'active' ? active : past;
+
+  const getRoute = (b) => {
+    if (b.status === 'accepted')    return '/customer/live-tracking';
+    if (b.status === 'in_progress') return '/customer/job-in-progress';
+    if (b.status === 'completed')   return '/customer/job-completed';
+    if (b.status === 'disputed')    return '/customer/dispute-status';
+    if (b.status === 'confirmed')   return '/customer/receipt';
+    return '/customer/booking-detail';
+  };
+
+  const fmt = (iso) => new Date(iso).toLocaleDateString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric',
+  });
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 relative pb-20 lg:pb-0">
+    <div className="flex flex-col h-full bg-gray-50 pb-20 lg:pb-0">
       <div className="bg-white px-6 py-5 sticky top-0 z-10 border-b border-gray-100 flex items-center justify-between">
         <h1 className="text-2xl font-black text-gray-900 tracking-tight">My Bookings</h1>
-        <button onClick={() => navigate('/customer/home')} className="lg:hidden w-10 h-10 flex items-center justify-center rounded-full bg-gray-50 text-gray-900 hover:bg-gray-100 transition-colors">
-          <X size={20} />
-        </button>
       </div>
 
       <div className="max-w-4xl mx-auto w-full flex-1 flex flex-col">
         <div className="px-6 pt-6">
-          <div className="flex bg-gray-200/50 backdrop-blur-sm p-1 rounded-2xl w-full sm:w-64">
-            <button 
-              onClick={() => setTab('active')} 
-              className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${tab === 'active' ? 'bg-white text-blue-700 shadow-md' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              Active
-            </button>
-            <button 
-              onClick={() => setTab('past')} 
-              className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${tab === 'past' ? 'bg-white text-blue-700 shadow-md' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              Past
-            </button>
+          <div className="flex bg-gray-200/50 p-1 rounded-2xl w-full sm:w-64">
+            {['active', 'past'].map(t => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all capitalize
+                  ${tab === t ? 'bg-white text-blue-700 shadow-md' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                {t} {t === 'active' ? `(${active.length})` : `(${past.length})`}
+              </button>
+            ))}
           </div>
         </div>
 
-        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 overflow-y-auto">
-          {tab === 'active' && (
-            <Link to="/customer/live-tracking" className="bg-white p-5 rounded-3xl shadow-sm border border-blue-100 flex flex-col gap-5 hover:border-blue-300 transition-all group">
-              <div className="flex justify-between items-start">
-                <div className="flex gap-4">
-                  <div className="w-14 h-14 bg-blue-50 text-blue-700 flex items-center justify-center rounded-2xl group-hover:scale-110 transition-transform">
-                    <Droplets size={28} />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-gray-900 text-lg">Tap Leak Repair</h3>
-                    <div className="flex items-center gap-2 text-gray-500 mt-1">
-                      <Clock size={14} className="text-blue-600" />
-                      <p className="text-xs font-bold uppercase tracking-wide">Today, 10:30 AM • ₹249</p>
-                    </div>
-                  </div>
-                </div>
-                <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">En Route</span>
-              </div>
-              <div className="bg-blue-50/50 p-4 rounded-2xl flex items-center gap-3 border border-blue-100/50">
-                <div className="relative">
-                  <div className="w-2.5 h-2.5 bg-blue-700 rounded-full"></div>
-                  <div className="absolute inset-0 w-2.5 h-2.5 bg-blue-700 rounded-full animate-ping opacity-75"></div>
-                </div>
-                <p className="text-sm font-bold text-blue-900">Worker arriving in 12 mins.</p>
-              </div>
-            </Link>
+        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4 overflow-y-auto">
+          {loading && [...Array(3)].map((_, i) => (
+            <div key={i} className="h-28 bg-white rounded-3xl animate-pulse border border-gray-100" />
+          ))}
+
+          {!loading && list.length === 0 && (
+            <div className="col-span-2 text-center py-16 text-gray-400">
+              <span className="text-4xl block mb-3">📦</span>
+              <p className="font-bold">{tab === 'active' ? 'No active bookings.' : 'No past bookings yet.'}</p>
+            </div>
           )}
 
-          {tab === 'past' && (
-            <>
-              <Link to="/customer/booking-detail" className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex flex-col gap-5 hover:border-blue-200 transition-all group">
-                <div className="flex justify-between items-start">
-                  <div className="flex gap-4">
-                    <div className="w-14 h-14 bg-green-50 text-green-700 flex items-center justify-center rounded-2xl group-hover:scale-110 transition-transform">
-                      <ShowerHead size={28} />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-gray-900 text-lg">Shower Fitting</h3>
-                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mt-1">12 Oct 2023 • ₹299</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 bg-green-100 text-green-700 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">
-                    <CheckCircle2 size={12} />
-                    <span>Completed</span>
-                  </div>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-2xl flex items-center justify-between border border-gray-100">
-                  <div className="flex items-center gap-3">
-                    <img src="https://i.pravatar.cc/150?img=11" alt="Worker" className="w-10 h-10 rounded-full border-2 border-white shadow-sm" />
-                    <span className="text-sm font-bold text-gray-900">Ramesh K.</span>
-                  </div>
-                  <button className="flex items-center gap-1.5 text-blue-700 text-xs font-black uppercase tracking-wider hover:bg-blue-50 px-3 py-2 rounded-xl transition-colors">
-                    <RotateCcw size={14} />
-                    Rebook
-                  </button>
-                </div>
-              </Link>
+          {list.map(b => {
+            const cfg   = STATUS_CONFIG[b.status] ?? STATUS_CONFIG.pending;
+            const Icon  = cfg.icon;
+            const icon  = CATEGORY_ICONS[b.category?.name] ?? '🔧';
 
-              <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex flex-col gap-5 opacity-60 grayscale hover:grayscale-0 hover:opacity-100 transition-all cursor-not-allowed">
+            return (
+              <button
+                key={b.id}
+                onClick={() => navigate(getRoute(b), { state: { bookingId: b.id } })}
+                className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex flex-col gap-4 hover:border-blue-300 hover:shadow-md transition-all text-left"
+              >
                 <div className="flex justify-between items-start">
                   <div className="flex gap-4">
-                    <div className="w-14 h-14 bg-orange-50 text-orange-600 flex items-center justify-center rounded-2xl">
-                      <Zap size={28} />
+                    <div className="w-12 h-12 bg-blue-50 text-2xl flex items-center justify-center rounded-2xl flex-shrink-0">
+                      {icon}
                     </div>
                     <div>
-                      <h3 className="font-bold text-gray-900 text-lg">Ceiling Fan Repair</h3>
-                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mt-1">05 Oct 2023 • ₹199</p>
+                      <h3 className="font-bold text-gray-900 text-base">{b.category?.name}</h3>
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mt-0.5">
+                        {fmt(b.createdAt)} • ₹{b.basePrice}
+                      </p>
                     </div>
                   </div>
-                  <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">Cancelled</span>
+                  <span className={`flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${cfg.color}`}>
+                    <Icon size={10} />
+                    {cfg.label}
+                  </span>
                 </div>
-              </div>
 
-              <div className="bg-white p-5 rounded-3xl shadow-sm border border-red-100 flex flex-col gap-5 hover:border-red-200 transition-all group">
-                <div className="flex justify-between items-start">
-                  <div className="flex gap-4">
-                    <div className="w-14 h-14 bg-red-50 text-red-600 flex items-center justify-center rounded-2xl group-hover:scale-110 transition-transform">
-                      <Wrench size={28} />
+                {b.worker && (
+                  <div className="bg-gray-50 rounded-2xl p-3 flex items-center gap-3 border border-gray-100">
+                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 text-sm font-bold">
+                      {b.worker.name?.[0] ?? 'W'}
                     </div>
-                    <div>
-                      <h3 className="font-bold text-gray-900 text-lg">Pipe Leak</h3>
-                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mt-1">28 Sep 2023 • ₹449</p>
-                    </div>
+                    <span className="text-sm font-bold text-gray-900">{b.worker.name}</span>
+                    {b.worker.avgRating > 0 && (
+                      <span className="text-xs text-amber-500 font-bold ml-auto">★ {b.worker.avgRating.toFixed(1)}</span>
+                    )}
                   </div>
-                  <div className="flex items-center gap-1 bg-red-100 text-red-700 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">
-                    <AlertCircle size={12} />
-                    <span>Disputed</span>
-                  </div>
-                </div>
-                <div 
-                  className="bg-red-50 p-4 rounded-2xl flex items-center gap-3 border border-red-100 cursor-pointer hover:bg-red-100/50 transition-colors" 
-                  onClick={() => navigate('/customer/dispute-status')}
-                >
-                  <AlertCircle size={18} className="text-red-600 shrink-0" />
-                  <p className="text-sm font-bold text-red-900 underline decoration-red-900/30 underline-offset-4">View Resolution Status</p>
-                </div>
-              </div>
-            </>
-          )}
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

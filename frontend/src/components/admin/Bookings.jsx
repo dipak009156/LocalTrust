@@ -1,17 +1,31 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { mockData } from '../../utils/mockData';
+import api from '../../utils/api';
 
 export default function Bookings() {
   const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState('All');
   const [serviceFilter, setServiceFilter] = useState('All');
 
-  // TODO: GET /admin/bookings
+  const [bookings, setBookings] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const filtered = mockData.bookings.filter(b => {
-    const matchStatus = statusFilter === 'All' || b.status === statusFilter;
-    const matchService = serviceFilter === 'All' || b.service.includes(serviceFilter);
+  useEffect(() => {
+    api.get('/admin/bookings')
+      .then(res => setBookings(res.data))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filtered = bookings.filter(b => {
+    // b.status is lowercased (e.g. 'pending', 'in_progress', 'completed')
+    // We map statusFilter (e.g. 'Pending', 'In Progress') to match it
+    let filterStatus = statusFilter.toLowerCase().replace(' ', '_');
+    const matchStatus = statusFilter === 'All' || b.status === filterStatus;
+    
+    const serviceName = b.category?.name || '';
+    const matchService = serviceFilter === 'All' || serviceName.toLowerCase().includes(serviceFilter.toLowerCase());
+    
     return matchStatus && matchService;
   });
 
@@ -77,40 +91,50 @@ export default function Bookings() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(b => (
+              {loading ? (
+                <tr><td colSpan="7" className="p-8 text-center text-slate-400">Loading...</td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan="7" className="p-8 text-center text-slate-400">No bookings found</td></tr>
+              ) : filtered.map(b => {
+                let displayStatus = b.status.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+                let escrowStatus = 'Locked';
+                if (b.status === 'completed' || b.status === 'resolved') escrowStatus = 'Released';
+                if (b.status === 'cancelled') escrowStatus = 'Refunded';
+
+                return (
                 <tr 
                   key={b.id} 
                   onClick={() => navigate(`/admin/bookings/${b.id}`)}
                   className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0 cursor-pointer group"
                 >
                   <td className="p-4">
-                    <p className="font-bold text-slate-900 group-hover:text-indigo-600">{b.id}</p>
-                    <p className="text-xs font-semibold text-slate-500 mt-0.5">{b.date}</p>
+                    <p className="font-bold text-slate-900 group-hover:text-indigo-600">{b.id.substring(0, 8)}...</p>
+                    <p className="text-xs font-semibold text-slate-500 mt-0.5">{new Date(b.createdAt).toLocaleDateString()}</p>
                   </td>
-                  <td className="p-4 font-bold text-slate-900">{b.service}</td>
-                  <td className="p-4 font-medium text-slate-700">{b.customer}</td>
-                  <td className="p-4 font-medium text-slate-700">{b.worker}</td>
+                  <td className="p-4 font-bold text-slate-900">{b.category?.name || '—'}</td>
+                  <td className="p-4 font-medium text-slate-700">{b.user?.name || b.user?.phone || '—'}</td>
+                  <td className="p-4 font-medium text-slate-700">{b.worker?.name || b.worker?.phone || 'Unassigned'}</td>
                   <td className="p-4">
                     <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${
-                      b.status === 'Completed' ? 'bg-green-100 text-green-700' :
-                      b.status === 'Disputed' ? 'bg-red-100 text-red-700' :
-                      b.status === 'In Progress' ? 'bg-blue-100 text-blue-700' :
+                      displayStatus === 'Completed' ? 'bg-green-100 text-green-700' :
+                      displayStatus === 'Disputed' ? 'bg-red-100 text-red-700' :
+                      displayStatus === 'In Progress' ? 'bg-blue-100 text-blue-700' :
                       'bg-amber-100 text-amber-700'
                     }`}>
-                      {b.status}
+                      {displayStatus}
                     </span>
                   </td>
                   <td className="p-4 text-right">
-                    <p className="font-black text-slate-900">₹{b.price}</p>
-                    <p className={`text-[10px] font-bold uppercase tracking-wider mt-0.5 ${b.escrow === 'Released' ? 'text-green-600' : b.escrow === 'Locked' ? 'text-red-600' : 'text-slate-500'}`}>
-                      {b.escrow}
+                    <p className="font-black text-slate-900">₹{b.basePrice}</p>
+                    <p className={`text-[10px] font-bold uppercase tracking-wider mt-0.5 ${escrowStatus === 'Released' ? 'text-green-600' : escrowStatus === 'Locked' ? 'text-amber-600' : 'text-slate-500'}`}>
+                      {escrowStatus}
                     </p>
                   </td>
                   <td className="p-4 text-right">
                     <button className="text-indigo-600 font-bold text-sm hover:underline">View</button>
                   </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </div>

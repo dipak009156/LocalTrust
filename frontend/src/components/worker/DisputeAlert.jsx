@@ -1,13 +1,32 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
+import api from '../../utils/api';
 
 export default function DisputeAlert() {
-  const navigate = useNavigate();
-  // 24 hours in seconds = 86400
-  const [timeLeft, setTimeLeft] = useState(86400);
+  const navigate  = useNavigate();
+  const location  = useLocation();
+  const bookingId = location.state?.bookingId;
 
-  // TODO: Socket.io listen for dispute_raised event
+  // 48-hour response window in seconds
+  const [timeLeft, setTimeLeft] = useState(48 * 3600);
+  const [dispute,  setDispute]  = useState(null);
 
+  // Fetch the dispute details
+  useEffect(() => {
+    if (!bookingId) return;
+    api.get(`/dispute/${bookingId}`)
+      .then(r => {
+        setDispute(r.data);
+        // Calculate remaining time from createdAt
+        const created   = new Date(r.data.createdAt).getTime();
+        const deadline  = created + 48 * 60 * 60 * 1000; // 48 hours
+        const remaining = Math.max(0, Math.floor((deadline - Date.now()) / 1000));
+        setTimeLeft(remaining);
+      })
+      .catch(console.error);
+  }, [bookingId]);
+
+  // Countdown tick
   useEffect(() => {
     const timer = setInterval(() => {
       setTimeLeft(prev => (prev > 0 ? prev - 1 : 0));
@@ -34,30 +53,37 @@ export default function DisputeAlert() {
       <div className="p-6 flex flex-col gap-6 overflow-y-auto pb-32">
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-red-100">
           <h2 className="text-sm font-bold text-gray-500 uppercase tracking-widest mb-2">Dispute Reason</h2>
-          <p className="text-lg font-extrabold text-red-700 mb-2">Job not completed properly</p>
-          <div className="bg-red-50 p-4 rounded-2xl border border-red-100 mt-3 text-sm font-medium text-red-900 italic">
-            "The tap is still leaking from the bottom base. He didn't tighten it enough and rushed out."
-          </div>
+          <p className="text-lg font-extrabold text-red-700 mb-2">
+            {dispute?.reason ?? 'Loading…'}
+          </p>
         </div>
 
-        <div>
-          <h3 className="font-extrabold text-gray-900 mb-3 text-sm">Your Submitted Proof</h3>
-          <div className="w-full h-48 bg-gray-200 rounded-3xl overflow-hidden shadow-sm">
-            {/* Mock proof photo */}
-            <img src="https://images.unsplash.com/photo-1585058173456-e97d1976a26d?q=80&w=1470&auto=format&fit=crop" alt="Proof" className="w-full h-full object-cover" />
+        {dispute?.workerResponse ? (
+          <div className="bg-green-50 p-4 rounded-2xl border border-green-100">
+            <p className="text-xs font-bold text-green-700 uppercase tracking-widest mb-1">Your Response (Submitted)</p>
+            <p className="text-sm font-medium text-green-900">{dispute.workerResponse}</p>
           </div>
-        </div>
+        ) : (
+          <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 text-sm font-medium text-amber-900">
+            ⚠️ You have not submitted a response yet. Please respond before the deadline.
+          </div>
+        )}
       </div>
 
       <div className="absolute bottom-0 left-0 right-0 p-6 bg-white border-t border-gray-100">
         <div className="flex justify-center mb-4">
-          <span className="bg-red-50 text-red-700 px-4 py-1.5 rounded-full text-xs font-bold border border-red-100 animate-pulse">
+          <span className={`px-4 py-1.5 rounded-full text-xs font-bold border ${timeLeft < 3600 ? 'bg-red-50 text-red-700 border-red-100 animate-pulse' : 'bg-orange-50 text-orange-700 border-orange-100'}`}>
             Respond within {formatTime(timeLeft)}
           </span>
         </div>
-        <button onClick={() => navigate('/worker/dispute-response')} className="w-full bg-blue-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-blue-200 hover:bg-blue-800 transition-colors mb-3">
-          Submit My Response
-        </button>
+        {!dispute?.workerResponse && (
+          <button
+            onClick={() => navigate('/worker/dispute-response', { state: { bookingId } })}
+            className="w-full bg-blue-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-blue-200 hover:bg-blue-800 transition-colors mb-3"
+          >
+            Submit My Response
+          </button>
+        )}
         <a href="tel:18001234567" className="w-full flex justify-center text-gray-500 font-bold py-2 text-sm hover:underline">
           Call Support
         </a>

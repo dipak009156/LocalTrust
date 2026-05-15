@@ -1,17 +1,24 @@
-import { useState } from 'react';
-import { mockData } from '../../utils/mockData';
+import { useState, useEffect } from 'react';
+import api from '../../utils/api';
 
 export default function Customers() {
   const [search, setSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [showBanModal, setShowBanModal] = useState(false);
   const [banReason, setBanReason] = useState('');
+  const [customers, setCustomers] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // TODO: GET /admin/customers
+  useEffect(() => {
+    api.get('/admin/customers')
+      .then(res => setCustomers(res.data))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
 
-  const filtered = mockData.customers.filter(c => 
-    c.name.toLowerCase().includes(search.toLowerCase()) || 
-    c.phone.includes(search)
+  const filtered = customers.filter(c => 
+    (c.name || '').toLowerCase().includes(search.toLowerCase()) || 
+    (c.phone || '').includes(search)
   );
 
   const handleToggleStatus = () => {
@@ -70,16 +77,20 @@ export default function Customers() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(c => (
+              {loading ? (
+                <tr><td colSpan="7" className="p-8 text-center text-slate-400">Loading...</td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan="7" className="p-8 text-center text-slate-400">No customers found</td></tr>
+              ) : filtered.map(c => (
                 <tr key={c.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
-                  <td className="p-4 font-bold text-slate-900">{c.name}</td>
+                  <td className="p-4 font-bold text-slate-900">{c.name || '—'}</td>
                   <td className="p-4 font-medium text-slate-700">{c.phone}</td>
-                  <td className="p-4 font-medium text-slate-700">{c.city}</td>
-                  <td className="p-4 font-bold text-slate-900">{c.bookings}</td>
-                  <td className="p-4 font-medium text-slate-500">{c.joinDate}</td>
+                  <td className="p-4 font-medium text-slate-700">{c.city || '—'}</td>
+                  <td className="p-4 font-bold text-slate-900">{c._count?.bookings || 0}</td>
+                  <td className="p-4 font-medium text-slate-500">{new Date(c.createdAt).toLocaleDateString()}</td>
                   <td className="p-4">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold tracking-wide ${c.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                      {c.status}
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold tracking-wide bg-green-100 text-green-700`}>
+                      Active
                     </span>
                   </td>
                   <td className="p-4 text-right">
@@ -128,27 +139,19 @@ export default function Customers() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center">
-                  <p className="text-2xl font-black text-slate-900">{selectedCustomer.bookings}</p>
+                  <p className="text-2xl font-black text-slate-900">{selectedCustomer._count?.bookings || 0}</p>
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mt-1">Bookings</p>
                 </div>
                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center">
-                  <p className="text-2xl font-black text-slate-900">1</p>
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mt-1">Disputes</p>
+                  <p className="text-2xl font-black text-slate-900">{selectedCustomer._count?.reviews || 0}</p>
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mt-1">Reviews</p>
                 </div>
               </div>
 
               <div>
                 <h4 className="font-bold text-slate-900 mb-3">Recent Bookings</h4>
                 <div className="flex flex-col gap-3">
-                  {[1, 2, 3].map(i => (
-                    <div key={i} className="bg-white border border-slate-200 p-3 rounded-xl flex justify-between items-center shadow-sm">
-                      <div>
-                        <p className="text-sm font-bold text-slate-900">AC Repair</p>
-                        <p className="text-xs font-medium text-slate-500">12 Oct 2023</p>
-                      </div>
-                      <span className="text-sm font-extrabold text-slate-900">₹499</span>
-                    </div>
-                  ))}
+                  <p className="text-slate-500 text-sm italic">Detailed booking history is available in the Bookings tab.</p>
                 </div>
               </div>
             </div>
@@ -156,9 +159,9 @@ export default function Customers() {
             <div className="p-6 border-t border-slate-100 bg-slate-50">
               <button 
                 onClick={handleToggleStatus}
-                className={`w-full font-bold py-3 rounded-xl border transition-colors ${selectedCustomer.status === 'Active' ? 'bg-white border-red-200 text-red-600 hover:bg-red-50' : 'bg-green-600 text-white hover:bg-green-700'}`}
+                className={`w-full font-bold py-3 rounded-xl border transition-colors bg-white border-red-200 text-red-600 hover:bg-red-50`}
               >
-                {selectedCustomer.status === 'Active' ? 'Ban Customer' : 'Unban Customer'}
+                Ban Customer
               </button>
             </div>
           </div>

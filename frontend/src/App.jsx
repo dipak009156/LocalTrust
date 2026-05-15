@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import Landing from './pages/Landing';
 import LoginPage from './pages/LoginPage';
 import Customer from './pages/Customer';
-import { setRole } from './store/authSlice';
+import { setRole, logout } from './store/authSlice';
 import { resetFlow } from './store/flowSlice';
 import { store } from './store/store';
 
@@ -43,6 +43,8 @@ import Earnings from './components/worker/Earnings';
 import WorkerJobHistory from './components/worker/JobHistory';
 import WorkerProfile from './components/worker/Profile';
 import WorkerChat from './components/worker/Chat';
+import KycUpload from './components/worker/KycUpload';
+import SkillSelection from './components/worker/SkillSelection';
 import Settings from './components/worker/Settings';
 
 // Admin Imports
@@ -64,8 +66,16 @@ import AdminSettings from './components/admin/Settings';
 function RoleBootstrap({ role, children }) {
   // Use useMemo so it runs on the same render cycle, not after paint
   useMemo(() => {
-    const current = store.getState().auth.role;
-    if (current !== role) {
+    const auth = store.getState().auth;
+    const currentRole = auth.role;
+    
+    // If we are authenticated but the role is different, we must logout to prevent 403s
+    if (auth.isAuthenticated && currentRole && currentRole !== role) {
+      localStorage.removeItem('lt_token'); // Clear the JWT
+      store.dispatch(logout());            // Reset Redux
+    }
+
+    if (currentRole !== role) {
       store.dispatch(setRole(role));
       store.dispatch(resetFlow());
     }
@@ -150,6 +160,8 @@ export default function App() {
           <Route path="earnings" element={<Earnings />} />
           <Route path="job-history" element={<WorkerJobHistory />} />
           <Route path="profile" element={<WorkerProfile />} />
+          <Route path="kyc" element={<KycUpload />} />
+          <Route path="skills" element={<SkillSelection />} />
           <Route path="chat" element={<WorkerChat />} />
           <Route path="settings" element={<Settings />} />
           <Route index element={<Navigate to="dashboard" replace />} />

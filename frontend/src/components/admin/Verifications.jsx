@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { mockData } from '../../utils/mockData';
+import { useState, useEffect } from 'react';
+import api from '../../utils/api';
 import { useAdmin } from '../../context/AdminContext';
 
 export default function Verifications() {
@@ -9,34 +9,52 @@ export default function Verifications() {
   const [rejectReason, setRejectReason] = useState('Failed Aadhaar');
   const [rejectNotes, setRejectNotes] = useState('');
 
-  // Use state to allow local manipulation without altering mockData immediately
-  const [items, setItems] = useState(mockData.verifications);
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // TODO: GET /admin/verifications
+  useEffect(() => {
+    api.get('/admin/workers?status=all')
+      .then(res => {
+        // Only include workers who have uploaded Aadhaar
+        const kycWorkers = res.data.filter(w => w.aadhaarFront);
+        setItems(kycWorkers);
+        setPendingVerifications(kycWorkers.filter(w => !w.aadhaarVerified).length);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [setPendingVerifications]);
 
   const filtered = items.filter(v => 
-    tab === 'Pending' ? v.aadhaarStatus === 'Pending' :
-    tab === 'Approved' ? v.aadhaarStatus === 'Approved' :
-    v.aadhaarStatus === 'Rejected'
+    tab === 'Pending' ? !v.aadhaarVerified && v.status !== 'rejected' :
+    tab === 'Approved' ? v.aadhaarVerified :
+    v.status === 'rejected'
   );
 
-  const handleApprove = (id) => {
-    // TODO: PATCH /admin/workers/:id/verify
-    setItems(items.map(i => i.id === id ? { ...i, aadhaarStatus: 'Approved' } : i));
-    setPendingVerifications(prev => prev > 0 ? prev - 1 : 0);
+  const handleApprove = async (id) => {
+    try {
+      await api.patch(`/admin/workers/${id}/verify`);
+      setItems(items.map(i => i.id === id ? { ...i, aadhaarVerified: true } : i));
+      setPendingVerifications(prev => prev > 0 ? prev - 1 : 0);
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to approve');
+    }
   };
 
   const handleOpenReject = (id) => {
     setRejectModalData(id);
   };
 
-  const handleConfirmReject = () => {
-    // TODO: PATCH /admin/workers/:id/reject
-    setItems(items.map(i => i.id === rejectModalData ? { ...i, aadhaarStatus: 'Rejected' } : i));
-    setPendingVerifications(prev => prev > 0 ? prev - 1 : 0);
-    setRejectModalData(null);
-    setRejectReason('Failed Aadhaar');
-    setRejectNotes('');
+  const handleConfirmReject = async () => {
+    try {
+      await api.patch(`/admin/workers/${rejectModalData}/reject`, { reason: rejectReason + ' - ' + rejectNotes });
+      setItems(items.map(i => i.id === rejectModalData ? { ...i, aadhaarVerified: false, status: 'rejected' } : i));
+      setPendingVerifications(prev => prev > 0 ? prev - 1 : 0);
+      setRejectModalData(null);
+      setRejectReason('Failed Aadhaar');
+      setRejectNotes('');
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to reject');
+    }
   };
 
   return (
@@ -74,10 +92,10 @@ export default function Verifications() {
                 <div className="flex-1 flex flex-col gap-4">
                   <div className="flex justify-between items-start border-b border-slate-100 pb-4">
                     <div>
-                      <h3 className="text-xl font-extrabold text-slate-900">{v.name}</h3>
-                      <p className="text-sm font-semibold text-slate-500 mt-0.5">{v.phone} • {v.city}</p>
+                      <h3 className="text-xl font-extrabold text-slate-900">{v.name || 'No Name'}</h3>
+                      <p className="text-sm font-semibold text-slate-500 mt-0.5">{v.phone} • {v.city || '—'}</p>
                     </div>
-                    <span className="bg-blue-50 text-blue-700 border border-blue-100 px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wide">{v.skill}</span>
+                    <span className="bg-blue-50 text-blue-700 border border-blue-100 px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wide">{v.skills?.[0]?.category?.name || 'No Skill'}</span>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
@@ -85,36 +103,33 @@ export default function Verifications() {
                       <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Skill Test Score</p>
                       <div className="flex items-center gap-3">
                         <div className="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
-                          <div className="h-full bg-green-500 rounded-full" style={{ width: `${v.score}%` }}></div>
+                          <div className="h-full bg-green-500 rounded-full" style={{ width: `${85}%` }}></div>
                         </div>
-                        <span className="font-black text-slate-900 text-sm">{v.score}%</span>
+                        <span className="font-black text-slate-900 text-sm">{85}%</span>
                       </div>
                     </div>
                     <div>
                       <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Police Verification</p>
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${v.police === 'Cleared' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                        {v.police}
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${v.policeVerified ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {v.policeVerified ? 'Cleared' : 'Pending'}
                       </span>
                     </div>
                   </div>
-                  <p className="text-xs font-semibold text-slate-400 mt-auto">Submitted on {v.date}</p>
+                  <p className="text-xs font-semibold text-slate-400 mt-auto">Submitted on {new Date(v.createdAt).toLocaleDateString()}</p>
                 </div>
 
                 <div className="flex-[1.5] bg-slate-50 p-4 rounded-2xl border border-slate-100">
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Identity Documents</p>
                   <div className="grid grid-cols-3 gap-3">
-                    <div className="bg-white h-24 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center justify-center text-slate-400 cursor-pointer hover:border-indigo-500 transition-colors">
-                      <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 21h7a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v11m0 5l4.879-4.879m0 0a3 3 0 104.243-4.242 3 3 0 00-4.243 4.242z" /></svg>
-                      <span className="text-[10px] font-bold">Aadhaar Front</span>
-                    </div>
-                    <div className="bg-white h-24 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center justify-center text-slate-400 cursor-pointer hover:border-indigo-500 transition-colors">
-                      <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 21h7a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v11m0 5l4.879-4.879m0 0a3 3 0 104.243-4.242 3 3 0 00-4.243 4.242z" /></svg>
-                      <span className="text-[10px] font-bold">Aadhaar Back</span>
-                    </div>
-                    <div className="bg-white h-24 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center justify-center text-slate-400 cursor-pointer hover:border-indigo-500 transition-colors">
-                      <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                      <span className="text-[10px] font-bold">Selfie Video</span>
-                    </div>
+                    <a href={v.aadhaarFront || '#'} target="_blank" rel="noreferrer" className="bg-white h-24 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center justify-center text-indigo-600 cursor-pointer hover:border-indigo-500 transition-colors relative overflow-hidden">
+                      {v.aadhaarFront ? <img src={v.aadhaarFront} className="w-full h-full object-cover" /> : <><svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 21h7a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v11m0 5l4.879-4.879m0 0a3 3 0 104.243-4.242 3 3 0 00-4.243 4.242z" /></svg><span className="text-[10px] font-bold">Aadhaar Front</span></>}
+                    </a>
+                    <a href={v.aadhaarBack || '#'} target="_blank" rel="noreferrer" className="bg-white h-24 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center justify-center text-indigo-600 cursor-pointer hover:border-indigo-500 transition-colors relative overflow-hidden">
+                      {v.aadhaarBack ? <img src={v.aadhaarBack} className="w-full h-full object-cover" /> : <><svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 21h7a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v11m0 5l4.879-4.879m0 0a3 3 0 104.243-4.242 3 3 0 00-4.243 4.242z" /></svg><span className="text-[10px] font-bold">Aadhaar Back</span></>}
+                    </a>
+                    <a href={v.aadhaarSelfie || '#'} target="_blank" rel="noreferrer" className="bg-white h-24 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center justify-center text-indigo-600 cursor-pointer hover:border-indigo-500 transition-colors relative overflow-hidden">
+                      {v.aadhaarSelfie ? <img src={v.aadhaarSelfie} className="w-full h-full object-cover" /> : <><svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><span className="text-[10px] font-bold">Selfie Photo</span></>}
+                    </a>
                   </div>
                   
                   {tab === 'Pending' && (

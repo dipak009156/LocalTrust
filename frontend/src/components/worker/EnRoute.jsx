@@ -1,13 +1,43 @@
-import { useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { db } from '../../firebase/config';
+import { ref as dbRef, set, remove } from 'firebase/database';
 import { useWorker } from '../../context/WorkerContext';
 
 export default function EnRoute() {
-  const navigate = useNavigate();
+  const navigate   = useNavigate();
+  const location   = useLocation();
+  const bookingId  = location.state?.bookingId ?? 'demo-booking';
   const { activeBooking } = useWorker();
+
   const [showPriceModal, setShowPriceModal] = useState(false);
-  const [newPrice, setNewPrice] = useState('');
+  const [newPrice, setNewPrice]     = useState('');
   const [priceReason, setPriceReason] = useState('');
+  const watchIdRef = useRef(null);
+
+  // ── Push GPS to Firebase RTDB every time position changes ─────────────────
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords;
+        set(dbRef(db, `locations/${bookingId}`), {
+          lat,
+          lng,
+          updatedAt: Date.now(),
+        });
+      },
+      (err) => console.warn('GPS error:', err.message),
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 },
+    );
+
+    return () => {
+      if (watchIdRef.current) navigator.geolocation.clearWatch(watchIdRef.current);
+      // Clean up RTDB when worker stops (leaves this screen)
+      remove(dbRef(db, `locations/${bookingId}`));
+    };
+  }, [bookingId]);
 
   // Fallback if accessed without active booking
   const booking = activeBooking || {
@@ -26,7 +56,7 @@ export default function EnRoute() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 relative overflow-hidden">
+    <div className="flex flex-col bg-gray-50 relative overflow-hidden" style={{ minHeight: '100dvh' }}>
       {/* Map Placeholder */}
       <div className="absolute inset-0 bg-gray-200" style={{ backgroundImage: 'linear-gradient(#e5e7eb 1px, transparent 1px), linear-gradient(90deg, #e5e7eb 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
         <div className="absolute top-1/4 left-1/3 w-6 h-6 bg-blue-700 rounded-full border-4 border-white shadow-lg animate-pulse z-10"></div>
@@ -68,7 +98,7 @@ export default function EnRoute() {
           </div>
 
           <div className="flex gap-3 mb-6">
-            <button onClick={() => navigate('/worker/chat')} className="flex-1 bg-white border border-gray-200 text-gray-900 font-bold py-3 rounded-2xl shadow-sm flex items-center justify-center gap-2 hover:bg-gray-50">
+            <button onClick={() => navigate('/worker/chat', { state: { bookingId } })} className="flex-1 bg-white border border-gray-200 text-gray-900 font-bold py-3 rounded-2xl shadow-sm flex items-center justify-center gap-2 hover:bg-gray-50">
               <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
               Chat
             </button>
@@ -82,7 +112,7 @@ export default function EnRoute() {
             Request Price Change
           </button>
 
-          <button onClick={() => navigate('/worker/otp-entry')} className="w-full bg-blue-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-blue-200 hover:bg-blue-800 transition-colors">
+          <button onClick={() => navigate('/worker/otp-entry', { state: { bookingId } })} className="w-full bg-blue-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-blue-200 hover:bg-blue-800 transition-colors">
             I've Arrived — Request OTP
           </button>
         </div>

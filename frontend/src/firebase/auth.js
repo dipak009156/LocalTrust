@@ -1,21 +1,22 @@
-import { auth } from './config';
-import { RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
+/**
+ * JWT token helpers — replaces Firebase Auth.
+ * Token is stored in localStorage after OTP verification.
+ */
 
-export function initRecaptcha() {
-  if (window.recaptchaVerifier) return;
-  window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-    size: 'invisible',
-    callback: () => {},
-  });
+export const TOKEN_KEY = 'lt_token';
+
+export function getToken() {
+    return localStorage.getItem(TOKEN_KEY);
 }
 
-export async function sendOTP(phone) {
-  initRecaptcha();
-  const result = await signInWithPhoneNumber(auth, '+91' + phone, window.recaptchaVerifier);
-  return result;
+export function setToken(token) {
+    localStorage.setItem(TOKEN_KEY, token);
 }
 
-export async function verifyOTP(confirmationResult, code) {
-  const userCredential = await confirmationResult.confirm(code);
-  return userCredential.user;
+export function clearToken() {
+    localStorage.removeItem(TOKEN_KEY);
+}
+
+export function isLoggedIn() {
+    return !!localStorage.getItem(TOKEN_KEY);
 }
