@@ -15,6 +15,8 @@ const {
     sendChat,
     getCategories,
     getWorkersByCategory,
+    requestPriceChange,
+    respondPriceChange,
 } = require('../controllers/booking.controller');
 
 // ─── Public / mixed routes ───────────────────────────────────────────────────
@@ -39,6 +41,10 @@ router.post('/:id/complete',                   requireVerifiedWorker, completeBo
 // Job lifecycle — Customer side
 router.post('/:id/confirm',                    requireUser, confirmBooking);
 router.post('/:id/review',                     requireUser, submitReview);
+
+// Price adjustment
+router.post('/:id/request-price',              requireVerifiedWorker, requestPriceChange);
+router.post('/:id/respond-price',              requireUser, respondPriceChange);
 
 // Cancellation — either side
 router.post('/:id/cancel',                     cancelBooking);

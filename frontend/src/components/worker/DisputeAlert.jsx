@@ -34,6 +34,21 @@ export default function DisputeAlert() {
     return () => clearInterval(timer);
   }, []);
 
+  // Poll for resolution — navigate to outcome when admin resolves
+  useEffect(() => {
+    if (!bookingId) return;
+    const poller = setInterval(async () => {
+      try {
+        const { data } = await api.get(`/dispute/${bookingId}`);
+        if (data.outcome && data.outcome !== 'pending') {
+          clearInterval(poller);
+          navigate('/worker/dispute-outcome', { state: { bookingId } });
+        }
+      } catch {}
+    }, 10000);
+    return () => clearInterval(poller);
+  }, [bookingId, navigate]);
+
   const formatTime = (totalSeconds) => {
     const h = Math.floor(totalSeconds / 3600);
     const m = Math.floor((totalSeconds % 3600) / 60);

@@ -171,20 +171,52 @@ export default function BookingDetail() {
             </div>
           </div>
 
-          {(booking.status === 'completed' || booking.status === 'disputed') && (
+          {(booking.status === 'completed' || booking.status === 'confirmed' || booking.status === 'disputed') && (
             <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6">
               <h3 className="font-extrabold text-slate-900 mb-4 text-lg">Proof of Work</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-xs font-bold text-slate-500 mb-2">Worker Uploaded Photo</p>
-                  <div className="w-full h-48 bg-slate-100 rounded-2xl border-2 border-dashed border-slate-300 flex items-center justify-center text-slate-400 font-bold text-sm">
-                    [Photo Placeholder]
-                  </div>
+                  {booking.proofPhoto ? (
+                    <a href={booking.proofPhoto} target="_blank" rel="noreferrer" className="block">
+                      <img
+                        src={booking.proofPhoto}
+                        alt="Proof of work"
+                        className="w-full h-48 object-cover rounded-2xl border border-slate-200 hover:opacity-90 transition-opacity cursor-zoom-in"
+                      />
+                      <p className="text-xs text-indigo-600 font-bold mt-1 text-center">Click to open full size ↗</p>
+                    </a>
+                  ) : (
+                    <div className="w-full h-48 bg-slate-100 rounded-2xl border-2 border-dashed border-slate-300 flex items-center justify-center text-slate-400 font-bold text-sm">
+                      No photo uploaded yet
+                    </div>
+                  )}
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-slate-500 mb-2">Worker Notes</p>
-                  <div className="w-full h-48 bg-slate-50 rounded-2xl border border-slate-100 p-4 text-sm font-medium text-slate-700 italic">
-                    "Completed the tap repair, tightened the base, no leaks present."
+                  <p className="text-xs font-bold text-slate-500 mb-2">Booking Details</p>
+                  <div className="w-full h-48 bg-slate-50 rounded-2xl border border-slate-100 p-4 text-sm font-medium text-slate-700 flex flex-col gap-3 overflow-auto">
+                    {booking.problemDesc && (
+                      <div>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Customer Problem</p>
+                        <p className="italic">"{booking.problemDesc}"</p>
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Address</p>
+                      <p>{booking.address}</p>
+                    </div>
+                    {booking.finalPrice && booking.finalPrice !== booking.basePrice && (
+                      <div>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Price Adjusted</p>
+                        <p>₹{booking.basePrice} → ₹{booking.finalPrice}</p>
+                      </div>
+                    )}
+                    {booking.otpVerified && (
+                      <div className="flex items-center gap-1 text-green-700 font-bold text-xs">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                        OTP Verified Check-in
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

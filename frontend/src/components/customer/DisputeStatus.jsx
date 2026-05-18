@@ -20,10 +20,18 @@ export default function DisputeStatus() {
 
   useEffect(() => {
     if (!bookingId) { setLoading(false); return; }
-    api.get(`/dispute/${bookingId}`)
-      .then(r => setDispute(r.data))
-      .catch(err => setError(err.response?.data?.message || 'Could not load dispute.'))
-      .finally(() => setLoading(false));
+
+    const fetchDispute = () => {
+      api.get(`/dispute/${bookingId}`)
+        .then(r => setDispute(r.data))
+        .catch(err => setError(err.response?.data?.message || 'Could not load dispute.'))
+        .finally(() => setLoading(false));
+    };
+
+    fetchDispute();
+    // Poll every 10s so customer sees resolution without refreshing
+    const poller = setInterval(fetchDispute, 10000);
+    return () => clearInterval(poller);
   }, [bookingId]);
 
   const outcome = dispute?.outcome ?? 'pending';

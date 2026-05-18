@@ -526,6 +526,76 @@ const getWorkersByCategory = async (req, res) => {
     }
 };
 
+/**
+ * POST /api/booking/:id/request-price
+ * Worker requests a price change with a reason.
+ */
+const requestPriceChange = async (req, res) => {
+    try {
+        const { amount, reason } = req.body;
+        const booking = await prisma.booking.findUnique({ where: { id: req.params.id } });
+
+        if (!booking) return res.status(404).json({ message: 'Booking not found' });
+        if (booking.workerId !== req.user.id) return res.status(403).json({ message: 'Not authorized' });
+        if (booking.status !== 'accepted' && booking.status !== 'in_progress') {
+            return res.status(400).json({ message: 'Price can only be changed during en-route or in-progress status' });
+        }
+
+        const updated = await prisma.booking.update({
+            where: { id: booking.id },
+            data: {
+                adjustmentPrice:  parseFloat(amount),
+                adjustmentReason: reason,
+            }
+        });
+
+        return res.status(200).json({ message: 'Price change requested', booking: updated });
+    } catch (error) {
+        logger.error('requestPriceChange error:', error);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+/**
+ * POST /api/booking/:id/respond-price
+ * Customer accepts or rejects a price change.
+ */
+const respondPriceChange = async (req, res) => {
+    try {
+        const { action } = req.body; // 'accept' | 'reject'
+        const booking = await prisma.booking.findUnique({ where: { id: req.params.id } });
+
+        if (!booking) return res.status(404).json({ message: 'Booking not found' });
+        if (booking.userId !== req.user.id) return res.status(403).json({ message: 'Not authorized' });
+        
+        if (!booking.adjustmentPrice) {
+            return res.status(400).json({ message: 'No pending price adjustment found' });
+        }
+
+        let updateData = {
+            adjustmentPrice:  null,
+            adjustmentReason: null,
+        };
+
+        if (action === 'accept') {
+            updateData.finalPrice = booking.adjustmentPrice;
+        }
+
+        const updated = await prisma.booking.update({
+            where: { id: booking.id },
+            data:  updateData,
+        });
+
+        return res.status(200).json({ 
+            message: action === 'accept' ? 'Price adjustment approved' : 'Price adjustment rejected', 
+            booking: updated 
+        });
+    } catch (error) {
+        logger.error('respondPriceChange error:', error);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
 module.exports = {
     createBooking,
     getPendingBookings,
@@ -539,4 +609,6 @@ module.exports = {
     sendChat,
     getCategories,
     getWorkersByCategory,
+    requestPriceChange,
+    respondPriceChange,
 };

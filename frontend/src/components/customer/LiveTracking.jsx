@@ -2,29 +2,36 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import { db } from '../../firebase/config';
 import { ref, onValue, off } from 'firebase/database';
+import api from '../../utils/api';
 
 /**
  * LiveTracking — Customer sees worker moving on the map in real time.
- *
- * Worker pushes their location to:  /locations/{bookingId}
- * This component listens live and moves the map marker.
- *
- * bookingId is expected in location.state.
+ * Worker pushes GPS to Firebase RTDB: /locations/{bookingId}
+ * Destination pin uses the booking's real lat/lng.
  */
 export default function LiveTracking() {
   const navigate   = useNavigate();
   const location   = useLocation();
   const bookingId  = location.state?.bookingId ?? 'demo-booking';
 
-  const mapRef     = useRef(null);
-  const leafletMap = useRef(null);
+  const mapRef       = useRef(null);
+  const leafletMap   = useRef(null);
   const workerMarker = useRef(null);
   const destMarker   = useRef(null);
 
-  const [workerPos, setWorkerPos]   = useState(null);
-  const [connected, setConnected]   = useState(false);
+  const [workerPos,  setWorkerPos]  = useState(null);
+  const [connected,  setConnected]  = useState(false);
+  const [booking,    setBooking]    = useState(null);
 
-  // ── Inject Leaflet CSS + init map ──────────────────────────────────────────
+  // Fetch booking to get customer's lat/lng and worker phone
+  useEffect(() => {
+    if (!bookingId || bookingId === 'demo-booking') return;
+    api.get(`/user/bookings/${bookingId}`)
+      .then(r => setBooking(r.data))
+      .catch(console.error);
+  }, [bookingId]);
+
+  // ── Init Leaflet map ──────────────────────────────────────────────────────
   useEffect(() => {
     if (leafletMap.current) return;
 
@@ -37,25 +44,13 @@ export default function LiveTracking() {
     }
 
     import('leaflet').then((L) => {
-      const map = L.map(mapRef.current, { zoomControl: false }).setView([19.076, 72.877], 14);
+      const map = L.map(mapRef.current, { zoomControl: false }).setView([20.5937, 78.9629], 13);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap',
       }).addTo(map);
       L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-      // Worker marker — animated blue dot
-      const workerIcon = L.divIcon({
-        className: '',
-        html: `<div style="
-          width:18px;height:18px;background:#1d4ed8;border:3px solid white;
-          border-radius:50%;box-shadow:0 0 0 4px rgba(29,78,216,0.3);
-          animation: workerPulse 1.5s infinite;
-        "></div>`,
-        iconSize:   [18, 18],
-        iconAnchor: [9, 9],
-      });
-
-      // Add CSS for animation
+      // Inject pulse CSS
       if (!document.getElementById('worker-pulse-css')) {
         const style = document.createElement('style');
         style.id    = 'worker-pulse-css';
@@ -69,21 +64,20 @@ export default function LiveTracking() {
         document.head.appendChild(style);
       }
 
-      workerMarker.current = L.marker([19.076, 72.877], { icon: workerIcon }).addTo(map);
-
-      // Destination marker (customer's address) — red pin placeholder
-      const destIcon = L.icon({
-        iconUrl:    'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-        iconSize:   [25, 41],
-        iconAnchor: [12, 41],
-        shadowUrl:  'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-        shadowSize: [41, 41],
+      // Worker marker — animated blue dot
+      const workerIcon = L.divIcon({
+        className: '',
+        html: `<div style="
+          width:18px;height:18px;background:#1d4ed8;border:3px solid white;
+          border-radius:50%;box-shadow:0 0 0 4px rgba(29,78,216,0.3);
+          animation:workerPulse 1.5s infinite;
+        "></div>`,
+        iconSize:   [18, 18],
+        iconAnchor: [9, 9],
       });
-      destMarker.current = L.marker([19.080, 72.890], { icon: destIcon })
-        .addTo(map)
-        .bindPopup('Your location');
 
-      leafletMap.current = map;
+      workerMarker.current = L.marker([20.5937, 78.9629], { icon: workerIcon }).addTo(map);
+      leafletMap.current   = map;
     });
 
     return () => {
@@ -92,7 +86,37 @@ export default function LiveTracking() {
     };
   }, []);
 
-  // ── Firebase RTDB — listen for worker location ─────────────────────────────
+  // ── Place destination pin once booking data is loaded ─────────────────────
+  useEffect(() => {
+    if (!booking || !leafletMap.current) return;
+    if (!booking.lat || !booking.lng) return;
+
+    import('leaflet').then((L) => {
+      // Remove old dest marker if exists
+      if (destMarker.current) {
+        destMarker.current.remove();
+      }
+
+      const destIcon = L.icon({
+        iconUrl:    'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+        iconSize:   [25, 41],
+        iconAnchor: [12, 41],
+        shadowUrl:  'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+        shadowSize: [41, 41],
+      });
+
+      destMarker.current = L.marker([booking.lat, booking.lng], { icon: destIcon })
+        .addTo(leafletMap.current)
+        .bindPopup('📍 Your location');
+
+      // Center map on destination until worker is tracked
+      if (!workerPos) {
+        leafletMap.current.setView([booking.lat, booking.lng], 15);
+      }
+    });
+  }, [booking, workerPos]);
+
+  // ── Firebase RTDB — listen for worker location ────────────────────────────
   useEffect(() => {
     const locationRef = ref(db, `locations/${bookingId}`);
 
@@ -104,17 +128,26 @@ export default function LiveTracking() {
 
       if (workerMarker.current && leafletMap.current) {
         workerMarker.current.setLatLng([lat, lng]);
-        // Pan map to keep worker in view
         leafletMap.current.panTo([lat, lng], { animate: true, duration: 1 });
+
+        // If we have destination too, fit both in bounds
+        if (destMarker.current && booking?.lat && booking?.lng) {
+          leafletMap.current.fitBounds(
+            [[lat, lng], [booking.lat, booking.lng]],
+            { padding: [60, 60], maxZoom: 16 },
+          );
+        }
       }
     });
 
     return () => off(locationRef);
-  }, [bookingId]);
+  }, [bookingId, booking]);
 
   const secondsAgo = workerPos?.updatedAt
     ? Math.round((Date.now() - workerPos.updatedAt) / 1000)
     : null;
+
+  const workerPhone = booking?.worker?.phone;
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
@@ -138,7 +171,7 @@ export default function LiveTracking() {
               </p>
             ) : (
               <p className="text-gray-400 font-bold text-sm mt-0.5 flex items-center gap-1.5">
-                <span className="w-2 h-2 bg-gray-300 rounded-full inline-block" />
+                <span className="w-2 h-2 bg-gray-300 rounded-full animate-pulse inline-block" />
                 Waiting for worker location…
               </p>
             )}
@@ -148,6 +181,18 @@ export default function LiveTracking() {
           </div>
         </div>
 
+        {booking?.worker?.name && (
+          <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 mb-4 flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-black">
+              {booking.worker.name.charAt(0)}
+            </div>
+            <div>
+              <p className="font-black text-gray-900 text-sm">{booking.worker.name}</p>
+              <p className="text-xs text-gray-500 font-semibold">{booking.category?.name}</p>
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-3 mb-6">
           <button
             onClick={() => navigate('/customer/chat', { state: { bookingId } })}
@@ -156,10 +201,17 @@ export default function LiveTracking() {
             <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
             Chat
           </button>
-          <button className="flex-1 bg-gray-50 border border-gray-200 text-gray-900 font-bold py-3 rounded-2xl flex items-center justify-center gap-2 hover:bg-gray-100">
-            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+          <a
+            href={workerPhone ? `tel:${workerPhone}` : undefined}
+            onClick={!workerPhone ? (e) => e.preventDefault() : undefined}
+            className={`flex-1 border font-bold py-3 rounded-2xl flex items-center justify-center gap-2 text-center transition-colors
+              ${workerPhone
+                ? 'bg-gray-50 border-gray-200 text-gray-900 hover:bg-gray-100'
+                : 'bg-gray-50 border-gray-100 text-gray-300 cursor-not-allowed'}`}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
             Call
-          </button>
+          </a>
         </div>
 
         {/* Demo shortcut */}

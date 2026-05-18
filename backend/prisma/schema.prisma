@@ -170,6 +170,8 @@ model Booking {
   otpCode      String?                     // check-in OTP shown to customer
   otpVerified  Boolean       @default(false)
   basePrice    Float
+  adjustmentPrice Float?                   // Pending price change requested by worker
+  adjustmentReason String?                  // Reason for price change
   finalPrice   Float?                      // set only if price adjustment was approved
   isInspection Boolean       @default(false)
   inspectionFee Float?                     // ₹99 for inspection-only jobs

@@ -1,16 +1,41 @@
-import { useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import api from '../../utils/api';
 
 export default function DisputeOutcome() {
-  const navigate = useNavigate();
-  // Mock outcome: 'won', 'lost', or 'split'
-  const [outcomeType, setOutcomeType] = useState('won');
+  const navigate  = useNavigate();
+  const location  = useLocation();
+  const bookingId = location.state?.bookingId;
 
-  // TODO: Socket.io listen for dispute_outcome event
+  const [dispute, setDispute] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!bookingId) { setLoading(false); return; }
+    api.get(`/dispute/${bookingId}`)
+      .then(r => setDispute(r.data))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [bookingId]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col h-full bg-white items-center justify-center">
+        <div className="w-12 h-12 border-4 border-blue-700 border-t-transparent rounded-full animate-spin mb-4" />
+        <p className="text-gray-500 font-semibold">Loading outcome…</p>
+      </div>
+    );
+  }
+
+  const outcome    = dispute?.outcome ?? 'pending';
+  const booking    = dispute?.booking;
+  const grossAmt   = booking?.finalPrice ?? booking?.basePrice ?? 0;
+  const netAmt     = parseFloat((grossAmt * 0.85).toFixed(2));
+  const adminNote  = dispute?.adminNote ?? '';
 
   const renderOutcome = () => {
-    switch (outcomeType) {
-      case 'won':
+    switch (outcome) {
+      case 'released_to_worker':
         return (
           <>
             <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6 shadow-sm">
@@ -21,12 +46,14 @@ export default function DisputeOutcome() {
               Our team reviewed the evidence and confirmed the job was completed properly. The full payment has been released to you.
             </p>
             <div className="bg-green-50 w-full rounded-3xl p-6 border border-green-100 shadow-sm text-center">
-              <p className="text-sm font-semibold text-green-800 uppercase tracking-wide mb-1">Amount Released</p>
-              <p className="text-3xl font-black text-green-700">₹249</p>
+              <p className="text-sm font-semibold text-green-800 uppercase tracking-wide mb-1">Net Amount Released</p>
+              <p className="text-3xl font-black text-green-700">₹{netAmt}</p>
+              {adminNote && <p className="text-xs text-green-700 mt-2 font-medium italic">"{adminNote}"</p>}
             </div>
           </>
         );
-      case 'lost':
+
+      case 'refunded_to_user':
         return (
           <>
             <div className="w-24 h-24 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-6 shadow-sm">
@@ -36,11 +63,17 @@ export default function DisputeOutcome() {
             <p className="text-gray-600 font-medium mb-8 text-center px-4">
               Based on the review, the customer's claim was validated. The payment has been refunded to the customer.
             </p>
+            {adminNote && (
+              <div className="bg-red-50 w-full rounded-2xl p-4 border border-red-100 text-sm text-red-700 font-medium mb-6 text-center italic">
+                "{adminNote}"
+              </div>
+            )}
             <a href="tel:18001234567" className="bg-gray-50 border border-gray-200 text-gray-900 font-bold py-4 px-8 rounded-2xl flex items-center justify-center gap-2 hover:bg-gray-100">
               📞 Call Support for Clarification
             </a>
           </>
         );
+
       case 'split':
         return (
           <>
@@ -52,39 +85,47 @@ export default function DisputeOutcome() {
               After reviewing both sides, our team decided to split the outcome fairly.
             </p>
             <div className="bg-amber-50 w-full rounded-3xl p-6 border border-amber-100 shadow-sm">
-              <div className="flex justify-between text-sm font-semibold text-amber-800 mb-3">
-                <span>Customer Refunded</span>
-                <span>₹100</span>
-              </div>
-              <div className="h-px w-full bg-amber-200 my-1"></div>
-              <div className="flex justify-between text-lg font-black text-amber-900 mt-2">
-                <span>You Received</span>
-                <span>₹149</span>
+              {adminNote ? (
+                <p className="text-sm font-semibold text-amber-800 italic text-center mb-4">"{adminNote}"</p>
+              ) : null}
+              <div className="text-sm font-semibold text-amber-800 text-center">
+                Check your earnings for the exact amount released.
               </div>
             </div>
           </>
         );
+
       default:
-        return null;
+        // Still pending — shouldn't land here normally
+        return (
+          <>
+            <div className="w-24 h-24 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mb-6 shadow-sm animate-pulse">
+              <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            </div>
+            <h1 className="text-2xl font-extrabold text-gray-900 mb-2">Awaiting Admin Decision</h1>
+            <p className="text-gray-600 font-medium mb-8 text-center px-4">
+              Our team is still reviewing the evidence. You'll be notified once the dispute is resolved.
+            </p>
+          </>
+        );
     }
   };
 
   return (
     <div className="flex flex-col h-full bg-white relative">
-      <div className="absolute top-5 left-5 flex gap-2 z-20">
-        <button onClick={() => setOutcomeType('won')} className={`px-2 py-1 text-[10px] rounded ${outcomeType === 'won' ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600'}`}>Won</button>
-        <button onClick={() => setOutcomeType('lost')} className={`px-2 py-1 text-[10px] rounded ${outcomeType === 'lost' ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-600'}`}>Lost</button>
-        <button onClick={() => setOutcomeType('split')} className={`px-2 py-1 text-[10px] rounded ${outcomeType === 'split' ? 'bg-amber-600 text-white' : 'bg-gray-200 text-gray-600'}`}>Split</button>
-      </div>
-
-      <div className="flex-1 p-6 flex flex-col items-center justify-center overflow-y-auto pb-32 pt-16">
+      <div className="flex-1 p-6 flex flex-col items-center justify-center overflow-y-auto pb-32 pt-8">
         {renderOutcome()}
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 p-6 bg-white border-t border-gray-100">
+      <div className="absolute bottom-0 left-0 right-0 p-6 bg-white border-t border-gray-100 flex flex-col gap-3">
         <button onClick={() => navigate('/worker/dashboard')} className="w-full bg-gray-900 text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-black transition-colors">
           Go to Dashboard
         </button>
+        {(outcome === 'released_to_worker' || outcome === 'split') && (
+          <button onClick={() => navigate('/worker/earnings')} className="w-full text-blue-700 font-bold py-3 text-sm hover:underline">
+            View Earnings
+          </button>
+        )}
       </div>
     </div>
   );

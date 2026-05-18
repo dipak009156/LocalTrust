@@ -251,11 +251,31 @@ const resolveDispute = async (req, res) => {
             return res.status(400).json({ message: `outcome must be one of: ${validOutcomes.join(', ')}` });
         }
 
-        const updated = await prisma.dispute.update({
+        const dispute = await prisma.dispute.findUnique({
             where: { id: req.params.id },
-            data:  { outcome, adminNote: adminNote ?? null, resolvedAt: new Date() },
+            select: { bookingId: true },
         });
-        return res.status(200).json({ message: 'Dispute resolved', dispute: updated });
+        if (!dispute) return res.status(404).json({ message: 'Dispute not found' });
+
+        // Map dispute outcome to a booking status
+        const bookingStatus =
+            outcome === 'released_to_worker' ? 'confirmed' :
+            outcome === 'refunded_to_user'   ? 'cancelled' :
+            'confirmed'; // split — mark as confirmed (earnings handled separately)
+
+        // Update dispute + booking in a transaction
+        const [updatedDispute] = await prisma.$transaction([
+            prisma.dispute.update({
+                where: { id: req.params.id },
+                data:  { outcome, adminNote: adminNote ?? null, resolvedAt: new Date() },
+            }),
+            prisma.booking.update({
+                where: { id: dispute.bookingId },
+                data:  { status: bookingStatus },
+            }),
+        ]);
+
+        return res.status(200).json({ message: 'Dispute resolved', dispute: updatedDispute });
     } catch (error) {
         logger.error('admin resolveDispute error:', error);
         return res.status(500).json({ message: 'Internal server error' });

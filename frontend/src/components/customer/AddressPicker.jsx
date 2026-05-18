@@ -1,26 +1,48 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 
 /**
  * AddressPicker — Customer selects service location
  * Uses Leaflet + OpenStreetMap + Nominatim.
- * On confirm → passes { lat, lng, address } back via navigate state.
+ * On confirm → navigates to returnTo route with { lat, lng, address } in state.
+ *
+ * Caller must pass in location.state: { returnTo, ...restOfState }
+ * e.g. navigate('/customer/address-picker', { state: { returnTo: '/customer/book', categoryId, categoryName, price } })
  */
 export default function AddressPicker() {
-  const navigate  = useNavigate();
+  const navigate    = useNavigate();
+  const location    = useLocation();
+
+  // Whatever the caller passed — we'll forward it back alongside the address
+  const { returnTo = '/customer/book', ...callerState } = location.state ?? {};
 
   const mapRef     = useRef(null);
   const leafletMap = useRef(null);
   const markerRef  = useRef(null);
 
-  const [coords, setCoords]   = useState(null);
-  const [address, setAddress] = useState('');
-  const [locating, setLocating] = useState(false);
+  const [coords,    setCoords]   = useState(null);
+  const [address,   setAddress]  = useState('');
+  const [locating,  setLocating] = useState(false);
+  const [geoError,  setGeoError] = useState('');
 
+  // ── Reverse-geocode helper ────────────────────────────────────────────────
+  const reverseGeocode = async (lat, lng) => {
+    try {
+      const res  = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+        { headers: { 'Accept-Language': 'en' } },
+      );
+      const data = await res.json();
+      return data.display_name ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    } catch {
+      return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    }
+  };
+
+  // ── Init Leaflet map ──────────────────────────────────────────────────────
   useEffect(() => {
     if (leafletMap.current) return;
 
-    // Inject Leaflet CSS once
     if (!document.getElementById('leaflet-css')) {
       const link   = document.createElement('link');
       link.id      = 'leaflet-css';
@@ -30,7 +52,7 @@ export default function AddressPicker() {
     }
 
     import('leaflet').then((L) => {
-      const map = L.map(mapRef.current, { zoomControl: false }).setView([19.076, 72.877], 13);
+      const map = L.map(mapRef.current, { zoomControl: false }).setView([20.5937, 78.9629], 5);
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap',
@@ -46,20 +68,12 @@ export default function AddressPicker() {
         shadowSize: [41, 41],
       });
 
-      const marker = L.marker([19.076, 72.877], { icon, draggable: true }).addTo(map);
+      const marker = L.marker([20.5937, 78.9629], { icon, draggable: true }).addTo(map);
 
       const updateLocation = async (lat, lng) => {
         setCoords({ lat, lng });
-        try {
-          const res  = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
-            { headers: { 'Accept-Language': 'en' } },
-          );
-          const data = await res.json();
-          setAddress(data.display_name ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-        } catch {
-          setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-        }
+        const addr = await reverseGeocode(lat, lng);
+        setAddress(addr);
       };
 
       marker.on('dragend', (e) => {
@@ -76,18 +90,29 @@ export default function AddressPicker() {
       leafletMap.current = map;
       markerRef.current  = marker;
 
-      // Auto-locate on open
+      // Auto-detect GPS on mount
       if (navigator.geolocation) {
+        setLocating(true);
         navigator.geolocation.getCurrentPosition(
-          (pos) => {
+          async (pos) => {
             const { latitude: lat, longitude: lng } = pos.coords;
             map.setView([lat, lng], 16);
             marker.setLatLng([lat, lng]);
-            updateLocation(lat, lng);
+            await updateLocation(lat, lng);
+            setLocating(false);
           },
-          () => {},
-          { enableHighAccuracy: true, timeout: 8000 },
+          (err) => {
+            setLocating(false);
+            if (err.code === 1) {
+              setGeoError('Location access denied. Drop a pin on the map or type your address.');
+            } else {
+              setGeoError('Could not detect location. Drop a pin on the map instead.');
+            }
+          },
+          { enableHighAccuracy: true, timeout: 10000 },
         );
+      } else {
+        setGeoError('Geolocation is not supported. Drop a pin on the map.');
       }
     });
 
@@ -97,31 +122,50 @@ export default function AddressPicker() {
     };
   }, []);
 
+  // ── Manual GPS button ─────────────────────────────────────────────────────
   const useGPS = () => {
-    if (!navigator.geolocation) return;
+    if (!navigator.geolocation) {
+      setGeoError('Geolocation not supported by this browser.');
+      return;
+    }
     setLocating(true);
+    setGeoError('');
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
         const { latitude: lat, longitude: lng } = pos.coords;
         leafletMap.current?.setView([lat, lng], 17);
-        import('leaflet').then(() => markerRef.current?.setLatLng([lat, lng]));
+        const L = await import('leaflet');
+        markerRef.current?.setLatLng([lat, lng]);
         setCoords({ lat, lng });
-        fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`, {
-          headers: { 'Accept-Language': 'en' },
-        })
-          .then(r => r.json())
-          .then(d => setAddress(d.display_name ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}`))
-          .finally(() => setLocating(false));
+        const addr = await reverseGeocode(lat, lng);
+        setAddress(addr);
+        setLocating(false);
       },
-      () => setLocating(false),
-      { enableHighAccuracy: true },
+      (err) => {
+        setLocating(false);
+        if (err.code === 1) {
+          setGeoError('Location permission denied. Please enable it in your browser settings and try again.');
+        } else {
+          setGeoError('Could not get your location. Try again or drop a pin on the map.');
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
     );
   };
 
+  // ── Confirm — navigate FORWARD to returnTo with full state ────────────────
+  // Using navigate(path, { state }) instead of navigate(-1) because
+  // navigate(-1) ignores the state argument in React Router.
   const handleConfirm = () => {
-    // Pass the location back to whoever navigated here
-    navigate(-1, {
-      state: { lat: coords?.lat, lng: coords?.lng, address },
+    if (!address) return;
+    navigate(returnTo, {
+      replace: true,
+      state: {
+        ...callerState,
+        lat:     coords?.lat ?? null,
+        lng:     coords?.lng ?? null,
+        address,
+      },
     });
   };
 
@@ -136,26 +180,47 @@ export default function AddressPicker() {
         <button
           onClick={useGPS}
           disabled={locating}
-          className="ml-auto flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 px-3 py-2 rounded-full border border-blue-100 hover:bg-blue-100 transition-colors"
+          className="ml-auto flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 px-3 py-2 rounded-full border border-blue-100 hover:bg-blue-100 transition-colors disabled:opacity-60"
         >
-          {locating ? '⏳' : '📍'} {locating ? 'Locating…' : 'My Location'}
+          {locating ? (
+            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+          ) : '📍'}
+          {locating ? 'Locating…' : 'Use My Location'}
         </button>
       </div>
 
-      {/* Map — full remaining height */}
+      {/* Locating spinner overlay on map */}
+      {locating && (
+        <div className="absolute inset-0 top-[73px] bg-white/60 z-20 flex flex-col items-center justify-center gap-3 pointer-events-none">
+          <div className="w-12 h-12 border-4 border-blue-700 border-t-transparent rounded-full animate-spin" />
+          <p className="text-blue-700 font-bold text-sm">Detecting your location…</p>
+        </div>
+      )}
+
+      {/* Map */}
       <div ref={mapRef} className="flex-1" style={{ minHeight: '300px' }} />
 
       {/* Bottom sheet */}
       <div className="bg-white rounded-t-3xl p-6 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] relative z-10 -mt-6">
         <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-5" />
-        <h2 className="text-lg font-extrabold text-gray-900 mb-3">Service Location</h2>
+        <h2 className="text-lg font-extrabold text-gray-900 mb-1">Service Location</h2>
+
+        {geoError && (
+          <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-3 mb-3 text-xs font-semibold text-amber-800">
+            <span className="text-base shrink-0">⚠️</span>
+            <span>{geoError}</span>
+          </div>
+        )}
 
         <textarea
           value={address}
           onChange={(e) => setAddress(e.target.value)}
           rows={3}
           className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm font-semibold text-gray-900 outline-none focus:border-blue-700 resize-none mb-5"
-          placeholder="Drop a pin on the map or type your address…"
+          placeholder="Drop a pin on the map, tap 'Use My Location', or type your address…"
         />
 
         <button

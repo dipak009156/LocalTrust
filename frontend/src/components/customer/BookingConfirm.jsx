@@ -20,10 +20,13 @@ export default function BookingConfirm() {
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
   const [note, setNote]         = useState('');
+  const [locating, setLocating] = useState(false);
+  const [geoError, setGeoError] = useState('');
 
   // Auto-detect location on mount
   useEffect(() => {
     if (navigator.geolocation) {
+      setLocating(true);
       navigator.geolocation.getCurrentPosition(
         async (pos) => {
           const { latitude, longitude } = pos.coords;
@@ -38,11 +41,22 @@ export default function BookingConfirm() {
             setAddress(data.display_name ?? `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
           } catch {
             setAddress(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+          } finally {
+            setLocating(false);
           }
         },
-        () => {},
-        { enableHighAccuracy: true, timeout: 8000 },
+        (err) => {
+          setLocating(false);
+          if (err.code === 1) {
+            setGeoError('Location access denied. Tap \'Edit\' to pick your address on the map.');
+          } else {
+            setGeoError('Could not detect location. Tap \'Edit\' to set your address.');
+          }
+        },
+        { enableHighAccuracy: true, timeout: 10000 },
       );
+    } else {
+      setGeoError('Location not supported. Tap \'Edit\' to enter your address.');
     }
   }, []);
 
@@ -106,16 +120,27 @@ export default function BookingConfirm() {
               Edit
             </button>
           </div>
-          {address ? (
+          {locating ? (
+            <div className="flex gap-4 items-start bg-blue-50 p-4 rounded-xl border border-blue-100">
+              <div className="w-12 h-12 bg-blue-100 rounded-xl shrink-0 flex items-center justify-center">
+                <svg className="animate-spin w-6 h-6 text-blue-700" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+              </div>
+              <p className="text-sm font-semibold text-blue-700 leading-relaxed pt-1">Detecting your location…</p>
+            </div>
+          ) : address ? (
             <div className="flex gap-4 items-start bg-gray-50 p-4 rounded-xl border border-gray-200">
               <div className="w-12 h-12 bg-blue-100 rounded-xl shrink-0 flex items-center justify-center text-blue-700">
                 <MapPin size={24} />
               </div>
               <p className="text-sm font-semibold text-gray-900 leading-relaxed">{address}</p>
             </div>
+          ) : geoError ? (
+            <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-sm font-semibold text-amber-800">
+              ⚠️ {geoError}
+            </div>
           ) : (
             <div className="bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl p-4 text-center text-gray-400 text-sm">
-              {navigator.geolocation ? 'Detecting your location…' : 'Tap Edit to set address'}
+              Tap 'Edit' to set your address
             </div>
           )}
         </div>

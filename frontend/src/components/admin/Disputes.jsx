@@ -107,10 +107,20 @@ export default function Disputes() {
                     <p className="font-bold text-slate-900 mb-1">{d.booking?.user?.name || 'Customer'}</p>
                     <p className="text-sm font-medium text-slate-700 italic mb-4">"{d.reason}"</p>
                     
-                    <p className="text-xs font-bold text-slate-500 mb-2">Evidence Provided</p>
-                    <div className="h-24 bg-white rounded-xl border border-slate-200 flex items-center justify-center text-slate-400 text-xs font-bold cursor-pointer hover:border-indigo-500 transition-colors">
-                      [View Photo]
-                    </div>
+                    <p className="text-xs font-bold text-slate-500 mb-2">Customer Evidence</p>
+                    {d.userEvidence?.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {d.userEvidence.map((url, i) => (
+                          <a key={i} href={url} target="_blank" rel="noreferrer" className="block">
+                            <img src={url} alt={`Customer evidence ${i + 1}`} className="h-24 w-24 object-cover rounded-xl border border-slate-200 hover:opacity-80 transition-opacity cursor-zoom-in" />
+                          </a>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="h-24 bg-white rounded-xl border border-slate-200 flex items-center justify-center text-slate-400 text-xs font-bold">
+                        No evidence uploaded
+                      </div>
+                    )}
                   </div>
 
                   {/* Worker Side */}
@@ -119,10 +129,20 @@ export default function Disputes() {
                     <p className="font-bold text-slate-900 mb-1">{d.booking?.worker?.name || 'Worker'}</p>
                     <p className="text-sm font-medium text-slate-700 italic mb-4">"{d.workerResponse || 'No response yet.'}"</p>
                     
-                    <p className="text-xs font-bold text-slate-500 mb-2">Evidence Provided</p>
-                    <div className="h-24 bg-white rounded-xl border border-slate-200 flex items-center justify-center text-slate-400 text-xs font-bold cursor-pointer hover:border-indigo-500 transition-colors">
-                      [View Photo]
-                    </div>
+                    <p className="text-xs font-bold text-slate-500 mb-2">Worker Evidence</p>
+                    {d.workerEvidence?.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {d.workerEvidence.map((url, i) => (
+                          <a key={i} href={url} target="_blank" rel="noreferrer" className="block">
+                            <img src={url} alt={`Worker evidence ${i + 1}`} className="h-24 w-24 object-cover rounded-xl border border-slate-200 hover:opacity-80 transition-opacity cursor-zoom-in" />
+                          </a>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="h-24 bg-white rounded-xl border border-slate-200 flex items-center justify-center text-slate-400 text-xs font-bold">
+                        No evidence uploaded
+                      </div>
+                    )}
                   </div>
                 </div>
 
