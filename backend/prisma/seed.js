@@ -16,11 +16,11 @@ async function main() {
 
     // ─── Admin ────────────────────────────────────────────────────────────────
     const admin = await prisma.admin.upsert({
-        where:  { phone: '9699236125' },
-        update: {},
+        where:  { phone: '9158146565' },
+        update: { name: 'Ninad Sawant' },
         create: {
-            phone: '9699236125',
-            name:  'Mihayel Noronha',
+            phone: '9158146565',
+            name:  'Ninad Sawant',
         },
     });
     console.log(`✅ Admin: ${admin.name} (${admin.phone})`);

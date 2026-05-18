@@ -179,7 +179,7 @@ const getBookingDetail = async (req, res) => {
                 review:   true,
                 earning:  true,
                 dispute:  true,
-                chat:     { orderBy: { sentAt: 'asc' } },
+                chatMessages: { orderBy: { sentAt: 'asc' } },
             },
         });
         if (!booking) return res.status(404).json({ message: 'Booking not found' });
@@ -257,14 +257,19 @@ const resolveDispute = async (req, res) => {
         });
         if (!dispute) return res.status(404).json({ message: 'Dispute not found' });
 
+        const booking = await prisma.booking.findUnique({
+            where: { id: dispute.bookingId },
+            include: { worker: true, category: true, escrow: true },
+        });
+        if (!booking) return res.status(404).json({ message: 'Booking not found' });
+
         // Map dispute outcome to a booking status
         const bookingStatus =
             outcome === 'released_to_worker' ? 'confirmed' :
             outcome === 'refunded_to_user'   ? 'cancelled' :
             'confirmed'; // split — mark as confirmed (earnings handled separately)
 
-        // Update dispute + booking in a transaction
-        const [updatedDispute] = await prisma.$transaction([
+        const txs = [
             prisma.dispute.update({
                 where: { id: req.params.id },
                 data:  { outcome, adminNote: adminNote ?? null, resolvedAt: new Date() },
@@ -273,7 +278,102 @@ const resolveDispute = async (req, res) => {
                 where: { id: dispute.bookingId },
                 data:  { status: bookingStatus },
             }),
-        ]);
+        ];
+
+        // 1. Released to worker
+        if (outcome === 'released_to_worker' && booking.workerId) {
+            const finalPrice = booking.finalPrice ?? booking.basePrice;
+            const commission = parseFloat((finalPrice * 0.15).toFixed(2));
+            const netAmount  = parseFloat((finalPrice - commission).toFixed(2));
+
+            txs.push(
+                prisma.workerEarning.upsert({
+                    where:  { bookingId: booking.id },
+                    create: {
+                        workerId:    booking.workerId,
+                        bookingId:   booking.id,
+                        grossAmount: finalPrice,
+                        commission,
+                        netAmount,
+                    },
+                    update: { grossAmount: finalPrice, commission, netAmount },
+                })
+            );
+
+            txs.push(
+                prisma.worker.update({
+                    where: { id: booking.workerId },
+                    data:  { totalJobs: { increment: 1 } },
+                })
+            );
+
+            if (booking.escrow) {
+                txs.push(
+                    prisma.escrowTransaction.update({
+                        where: { id: booking.escrow.id },
+                        data:  { status: 'released', workerAmount: finalPrice, userRefund: 0, releasedAt: new Date() },
+                    })
+                );
+            }
+        }
+
+        // 2. Refunded to user
+        if (outcome === 'refunded_to_user') {
+            if (booking.escrow) {
+                txs.push(
+                    prisma.escrowTransaction.update({
+                        where: { id: booking.escrow.id },
+                        data:  { status: 'refunded', workerAmount: 0, userRefund: booking.escrow.amount },
+                    })
+                );
+            }
+        }
+
+        // 3. Split payment
+        if (outcome === 'split' && booking.workerId) {
+            // Parse worker share from adminNote, e.g., "Split: ₹X to Customer, ₹Y to Worker"
+            const match = adminNote ? adminNote.match(/₹([\d.]+) to Worker/) : null;
+            const workerShare = match ? parseFloat(match[1]) : 0;
+            const userRefund  = booking.escrow ? (booking.escrow.amount - workerShare) : 0;
+
+            if (workerShare > 0) {
+                const commission = parseFloat((workerShare * 0.15).toFixed(2));
+                const netAmount  = parseFloat((workerShare - commission).toFixed(2));
+
+                txs.push(
+                    prisma.workerEarning.upsert({
+                        where:  { bookingId: booking.id },
+                        create: {
+                            workerId:    booking.workerId,
+                            bookingId:   booking.id,
+                            grossAmount: workerShare,
+                            commission,
+                            netAmount,
+                        },
+                        update: { grossAmount: workerShare, commission, netAmount },
+                    })
+                );
+
+                txs.push(
+                    prisma.worker.update({
+                        where: { id: booking.workerId },
+                        data:  { totalJobs: { increment: 1 } },
+                    })
+                );
+            }
+
+            if (booking.escrow) {
+                txs.push(
+                    prisma.escrowTransaction.update({
+                        where: { id: booking.escrow.id },
+                        data:  { status: 'split', workerAmount: workerShare, userRefund },
+                    })
+                );
+            }
+        }
+
+        // Update dispute + booking + earnings in a transaction
+        const [updatedDispute] = await prisma.$transaction(txs);
 
         return res.status(200).json({ message: 'Dispute resolved', dispute: updatedDispute });
     } catch (error) {

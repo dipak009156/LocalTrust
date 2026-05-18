@@ -22,14 +22,62 @@ export default function LiveTracking() {
   const [workerPos,  setWorkerPos]  = useState(null);
   const [connected,  setConnected]  = useState(false);
   const [booking,    setBooking]    = useState(null);
+  const [hasUnread,  setHasUnread]   = useState(false);
 
-  // Fetch booking to get customer's lat/lng and worker phone
+  // Background check for unread chat messages
   useEffect(() => {
     if (!bookingId || bookingId === 'demo-booking') return;
-    api.get(`/user/bookings/${bookingId}`)
-      .then(r => setBooking(r.data))
-      .catch(console.error);
+
+    const checkUnread = async () => {
+      try {
+        const { data } = await api.get(`/booking/${bookingId}/chat`);
+        if (!data || data.length === 0) return;
+        const seen = parseInt(localStorage.getItem(`chat_seen_${bookingId}`) || '0', 10);
+        if (data.length > seen) {
+          const lastMsg = data[data.length - 1];
+          if (lastMsg.senderRole === 'worker') {
+            setHasUnread(true);
+          } else {
+            localStorage.setItem(`chat_seen_${bookingId}`, data.length);
+            setHasUnread(false);
+          }
+        } else {
+          setHasUnread(false);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    checkUnread();
+    const interval = setInterval(checkUnread, 4000);
+    return () => clearInterval(interval);
   }, [bookingId]);
+
+  // Fetch booking to get customer's lat/lng, worker phone, and price updates
+  useEffect(() => {
+    if (!bookingId || bookingId === 'demo-booking') return;
+
+    const fetchBooking = () => {
+      api.get(`/user/bookings/${bookingId}`)
+        .then(r => setBooking(r.data))
+        .catch(console.error);
+    };
+
+    fetchBooking();
+    const interval = setInterval(fetchBooking, 5000);
+    return () => clearInterval(interval);
+  }, [bookingId]);
+
+  const handlePriceAdjustment = async (action) => {
+    try {
+      await api.post(`/booking/${bookingId}/respond-price`, { action });
+      const { data } = await api.get(`/user/bookings/${bookingId}`);
+      setBooking(data);
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to submit response');
+    }
+  };
 
   // ── Init Leaflet map ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -194,13 +242,21 @@ export default function LiveTracking() {
         )}
 
         <div className="flex gap-3 mb-6">
-          <button
-            onClick={() => navigate('/customer/chat', { state: { bookingId } })}
-            className="flex-1 bg-gray-50 border border-gray-200 text-gray-900 font-bold py-3 rounded-2xl flex items-center justify-center gap-2 hover:bg-gray-100"
-          >
-            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-            Chat
-          </button>
+          <div className="relative flex-1">
+            <button
+              onClick={() => navigate('/customer/chat', { state: { bookingId } })}
+              className="w-full bg-gray-50 border border-gray-200 text-gray-900 font-bold py-3 rounded-2xl flex items-center justify-center gap-2 hover:bg-gray-100"
+            >
+              <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+              Chat
+            </button>
+            {hasUnread && (
+              <span className="absolute top-2 right-3 flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600 border border-white"></span>
+              </span>
+            )}
+          </div>
           <a
             href={workerPhone ? `tel:${workerPhone}` : undefined}
             onClick={!workerPhone ? (e) => e.preventDefault() : undefined}
@@ -222,6 +278,53 @@ export default function LiveTracking() {
           [Simulate: Worker Arrived]
         </button>
       </div>
+
+      {/* Price Adjustment Request Alert / Modal */}
+      {booking?.adjustmentPrice && (
+        <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm z-50 flex items-end animate-in fade-in animate-duration-300">
+          <div className="bg-white w-full rounded-t-3xl p-6 shadow-2xl animate-in slide-in-from-bottom duration-300">
+            <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-6" />
+            <div className="flex items-center gap-3 mb-4">
+              <span className="text-3xl">💰</span>
+              <div>
+                <h3 className="text-lg font-extrabold text-gray-900">Price Adjustment Request</h3>
+                <p className="text-xs text-gray-500 font-semibold mt-0.5">The worker requested a price update</p>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 flex flex-col gap-3 mb-6">
+              <div className="flex justify-between items-center text-sm font-extrabold text-amber-900">
+                <span>Original Price</span>
+                <span>₹{booking.basePrice}</span>
+              </div>
+              <div className="flex justify-between items-center text-base font-black text-amber-950 border-t border-amber-100/50 pt-2.5">
+                <span>Adjusted Price</span>
+                <span className="text-xl">₹{booking.adjustmentPrice}</span>
+              </div>
+              {booking.adjustmentReason && (
+                <p className="text-xs font-semibold text-amber-800 bg-white/60 p-2.5 rounded-xl border border-amber-100/50 mt-1">
+                  💡 "{booking.adjustmentReason}"
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => handlePriceAdjustment('reject')}
+                className="flex-1 bg-white border border-gray-200 text-gray-700 font-bold py-3.5 rounded-2xl hover:bg-gray-50 active:scale-95 transition-transform"
+              >
+                Decline
+              </button>
+              <button
+                onClick={() => handlePriceAdjustment('accept')}
+                className="flex-[1.5] bg-blue-700 text-white font-bold py-3.5 rounded-2xl hover:bg-blue-800 shadow-lg shadow-blue-200 active:scale-95 transition-all"
+              >
+                Approve & Pay ₹{booking.adjustmentPrice}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,5 @@
-import { useRef } from 'react';
+import { useRef, useEffect, useState } from 'react';
+import api from '../../utils/api';
 
 const generateReviews = () => {
   const templates = [
@@ -19,7 +20,7 @@ const generateReviews = () => {
   const names = ['Priya', 'Ramesh', 'Fatima', 'Rahul', 'Sneha', 'Amit', 'Neha', 'Vikram', 'Pooja', 'Suresh', 'Anita', 'Karan', 'Meera', 'Rohan', 'Swati'];
 
   return Array.from({ length: 50 }).map((_, i) => ({
-    id: i,
+    id: `static-${i}`,
     quote: i < 3 ? [
       '"Finally knew exactly what I\'d pay before the guy even left. No more bargaining."',
       '"Showed me his ID badge before entering. Never had that security before."',
@@ -30,10 +31,33 @@ const generateReviews = () => {
   }));
 };
 
-const testimonials = generateReviews();
+const staticTestimonials = generateReviews();
 
 export default function Testimonials() {
   const scrollRef = useRef(null);
+  const [reviews, setReviews] = useState(staticTestimonials);
+
+  useEffect(() => {
+    api.get('/booking/recent-reviews')
+      .then(res => {
+        if (Array.isArray(res.data) && res.data.length > 0) {
+          const mapped = res.data.map(r => ({
+            id: r.id,
+            quote: `"${r.comment || 'Excellent quality work, very professional!'}"`,
+            author: `— ${r.user?.name || 'Customer'}${r.user?.city ? `, ${r.user.city}` : ''}`,
+            rating: r.rating,
+            isReal: true,
+          }));
+          // Merge real/recent ones at the start of the list
+          setReviews([...mapped, ...staticTestimonials]);
+        } else {
+          setReviews(staticTestimonials);
+        }
+      })
+      .catch(() => {
+        setReviews(staticTestimonials);
+      });
+  }, []);
 
   const scroll = (direction) => {
     if (scrollRef.current) {
@@ -63,16 +87,26 @@ export default function Testimonials() {
           className="flex gap-6 overflow-x-auto snap-x snap-mandatory scrollbar-hide pb-8 -mx-4 px-4 sm:mx-0 sm:px-0"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
-          {testimonials.map((testimonial) => (
+          {reviews.map((testimonial) => (
             <div 
               key={testimonial.id} 
-              className="flex-none w-[85vw] sm:w-[350px] md:w-[400px] snap-center bg-gray-50 p-5 sm:p-8 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between"
+              className={`flex-none w-[85vw] sm:w-[350px] md:w-[400px] snap-center p-5 sm:p-8 rounded-2xl border transition-all flex flex-col justify-between
+                ${testimonial.isReal 
+                  ? 'bg-blue-50/40 border-blue-100 shadow-[0_4px_20px_rgba(29,78,216,0.06)]' 
+                  : 'bg-gray-50 border-gray-100 shadow-sm hover:shadow-md'}`}
             >
               <div>
-                <div className="flex text-amber-400 mb-3 sm:mb-4 text-base sm:text-lg">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <span key={i}>{i < testimonial.rating ? '★' : '☆'}</span>
-                  ))}
+                <div className="flex justify-between items-start mb-3 sm:mb-4">
+                  <div className="flex text-amber-400 text-base sm:text-lg">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <span key={i}>{i < testimonial.rating ? '★' : '☆'}</span>
+                    ))}
+                  </div>
+                  {testimonial.isReal && (
+                    <span className="bg-blue-600/10 text-blue-700 font-bold uppercase tracking-widest text-[9px] px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                      <span>•</span> Verified Review
+                    </span>
+                  )}
                 </div>
                 <p className="text-gray-700 mb-4 sm:mb-6 italic text-base sm:text-lg leading-relaxed">{testimonial.quote}</p>
               </div>
@@ -98,5 +132,5 @@ export default function Testimonials() {
         </span>
       </div>
     </section>
-  )
+  );
 }

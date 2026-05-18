@@ -81,7 +81,7 @@ const getActiveBooking = async (req, res) => {
         const booking = await prisma.booking.findFirst({
             where: {
                 userId: req.user.id,
-                status: { in: ['pending', 'accepted', 'in_progress', 'completed'] },
+                status: { in: ['pending', 'accepted', 'in_progress', 'completed', 'disputed'] },
             },
             include: {
                 category: { select: { name: true, iconUrl: true } },

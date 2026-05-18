@@ -17,7 +17,11 @@ const {
     getWorkersByCategory,
     requestPriceChange,
     respondPriceChange,
+    getRecentReviews,
 } = require('../controllers/booking.controller');
+
+// ─── Public routes ──────────────────────────────────────────────────────────
+router.get('/recent-reviews', getRecentReviews);
 
 // ─── Public / mixed routes ───────────────────────────────────────────────────
 // These require auth but may be called by USER or WORKER

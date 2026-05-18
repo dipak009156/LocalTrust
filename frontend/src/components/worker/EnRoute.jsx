@@ -24,6 +24,37 @@ export default function EnRoute() {
   const [showPriceModal, setShowPriceModal] = useState(false);
   const [newPrice,       setNewPrice]       = useState('');
   const [priceReason,    setPriceReason]    = useState('');
+  const [hasUnread,      setHasUnread]      = useState(false);
+
+  // Background check for unread chat messages
+  useEffect(() => {
+    if (!bookingId || bookingId === 'demo-booking') return;
+
+    const checkUnread = async () => {
+      try {
+        const { data } = await api.get(`/booking/${bookingId}/chat`);
+        if (!data || data.length === 0) return;
+        const seen = parseInt(localStorage.getItem(`chat_seen_${bookingId}`) || '0', 10);
+        if (data.length > seen) {
+          const lastMsg = data[data.length - 1];
+          if (lastMsg.senderRole === 'user') {
+            setHasUnread(true);
+          } else {
+            localStorage.setItem(`chat_seen_${bookingId}`, data.length);
+            setHasUnread(false);
+          }
+        } else {
+          setHasUnread(false);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    checkUnread();
+    const interval = setInterval(checkUnread, 4000);
+    return () => clearInterval(interval);
+  }, [bookingId]);
 
   // Booking data from context or fallback
   const booking = activeBooking || {
@@ -246,21 +277,19 @@ export default function EnRoute() {
             </div>
           </div>
 
-          {booking.otp && (
-            <div className="bg-blue-50 rounded-2xl p-3 border border-blue-100 mb-4 flex items-center gap-3">
-              <span className="text-lg">🔑</span>
-              <div>
-                <p className="text-[10px] font-black text-blue-700 uppercase tracking-widest">Check-in OTP</p>
-                <p className="text-2xl font-black text-blue-900 tracking-widest">{booking.otp}</p>
-              </div>
-            </div>
-          )}
-
           <div className="flex gap-3 mb-4">
-            <button onClick={() => navigate('/worker/chat', { state: { bookingId } })} className="flex-1 bg-gray-50 border border-gray-200 text-gray-900 font-bold py-3 rounded-2xl shadow-sm flex items-center justify-center gap-2 hover:bg-gray-100">
-              <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-              Chat
-            </button>
+            <div className="relative flex-1">
+              <button onClick={() => navigate('/worker/chat', { state: { bookingId } })} className="w-full bg-gray-50 border border-gray-200 text-gray-900 font-bold py-3 rounded-2xl shadow-sm flex items-center justify-center gap-2 hover:bg-gray-100">
+                <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                Chat
+              </button>
+              {hasUnread && (
+                <span className="absolute top-2 right-3 flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600 border border-white"></span>
+                </span>
+              )}
+            </div>
             <a href={`tel:${booking.phone ?? ''}`} className="flex-1 bg-gray-50 border border-gray-200 text-gray-900 font-bold py-3 rounded-2xl shadow-sm flex items-center justify-center gap-2 hover:bg-gray-100 text-center">
               <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
               Call

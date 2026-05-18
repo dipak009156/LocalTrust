@@ -44,7 +44,10 @@ export default function Chat() {
   // Scroll to bottom on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (messages.length > 0 && bookingId) {
+      localStorage.setItem(`chat_seen_${bookingId}`, messages.length);
+    }
+  }, [messages, bookingId]);
 
   const handleSend = async () => {
     if (!input.trim() || !bookingId) return;

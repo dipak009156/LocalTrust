@@ -48,6 +48,7 @@ export default function Home() {
     accepted:    { label: 'Worker En Route',  color: 'bg-blue-600',  route: '/customer/live-tracking' },
     in_progress: { label: 'Job In Progress',  color: 'bg-green-600', route: '/customer/job-in-progress' },
     completed:   { label: 'Awaiting Review',  color: 'bg-purple-600',route: '/customer/job-completed' },
+    disputed:    { label: 'Dispute Under Review', color: 'bg-red-600',   route: '/customer/dispute-status' },
   };
 
   return (

@@ -12,6 +12,37 @@ export default function JobInProgress() {
   const [secondsElapsed, setSecondsElapsed]     = useState(0);
   const [showEmergencyModal, setShowEmergencyModal] = useState(false);
   const [booking, setBooking]                   = useState(null);
+  const [hasUnread, setHasUnread]               = useState(false);
+
+  // Background check for unread chat messages
+  useEffect(() => {
+    if (!bookingId) return;
+
+    const checkUnread = async () => {
+      try {
+        const { data } = await api.get(`/booking/${bookingId}/chat`);
+        if (!data || data.length === 0) return;
+        const seen = parseInt(localStorage.getItem(`chat_seen_${bookingId}`) || '0', 10);
+        if (data.length > seen) {
+          const lastMsg = data[data.length - 1];
+          if (lastMsg.senderRole === 'user') {
+            setHasUnread(true);
+          } else {
+            localStorage.setItem(`chat_seen_${bookingId}`, data.length);
+            setHasUnread(false);
+          }
+        } else {
+          setHasUnread(false);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    checkUnread();
+    const interval = setInterval(checkUnread, 4000);
+    return () => clearInterval(interval);
+  }, [bookingId]);
 
   // Fetch booking details if not already in context
   useEffect(() => {
@@ -69,13 +100,21 @@ export default function JobInProgress() {
         </div>
 
         <div className="flex w-full gap-3">
-          <button
-            onClick={() => navigate('/worker/chat', { state: { bookingId } })}
-            className="flex-1 bg-white border border-gray-200 text-gray-900 font-bold py-4 rounded-2xl hover:bg-gray-50 flex items-center justify-center gap-2 shadow-sm"
-          >
-            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-            Chat
-          </button>
+          <div className="relative flex-1">
+            <button
+              onClick={() => navigate('/worker/chat', { state: { bookingId } })}
+              className="w-full bg-white border border-gray-200 text-gray-900 font-bold py-4 rounded-2xl hover:bg-gray-50 flex items-center justify-center gap-2 shadow-sm"
+            >
+              <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+              Chat
+            </button>
+            {hasUnread && (
+              <span className="absolute top-2.5 right-3 flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600 border border-white"></span>
+              </span>
+            )}
+          </div>
           <button
             onClick={() => setShowEmergencyModal(true)}
             className="w-16 h-16 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center hover:bg-red-100 border border-red-100 shrink-0"

@@ -1,5 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import { uploadFile } from '../../firebase/uploadFile';
 import api from '../../utils/api';
 
 const REASONS = [
@@ -15,26 +16,58 @@ export default function Dispute() {
   const navigate  = useNavigate();
   const location  = useLocation();
   const bookingId = location.state?.bookingId;
+  const fileInputRef = useRef(null);
 
-  const [reason,   setReason]   = useState(REASONS[0]);
-  const [desc,     setDesc]     = useState('');
-  const [loading,  setLoading]  = useState(false);
-  const [error,    setError]    = useState('');
+  const [reason,       setReason]       = useState(REASONS[0]);
+  const [desc,         setDesc]         = useState('');
+  const [loading,      setLoading]      = useState(false);
+  const [error,        setError]        = useState('');
+  const [photoFile,    setPhotoFile]    = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [uploading,    setUploading]    = useState(false);
+  const [progress,     setProgress]     = useState(0);
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+    setError('');
+  };
 
   const handleSubmit = async () => {
     if (!bookingId) {
       setError('Booking ID is missing. Please go back and try again.');
       return;
     }
+    if (!photoFile) {
+      setError('Please select and upload at least one evidence photo to raise a dispute.');
+      return;
+    }
+
     setLoading(true);
     setError('');
+    setUploading(true);
+    setProgress(0);
+
+    let userEvidence = [];
+
     try {
+      // 1. Upload evidence photo to Cloudinary
+      const url = await uploadFile(photoFile, 'dispute_evidence', setProgress);
+      userEvidence = [url];
+      setUploading(false);
+
+      // 2. Submit dispute with evidence array
       await api.post('/dispute', {
         bookingId,
         reason: desc ? `${reason} — ${desc}` : reason,
+        userEvidence,
       });
+
       navigate('/customer/dispute-status', { state: { bookingId } });
     } catch (err) {
+      setUploading(false);
       setError(err.response?.data?.message || 'Failed to submit dispute. Please try again.');
     } finally {
       setLoading(false);
@@ -75,9 +108,58 @@ export default function Dispute() {
           <textarea
             value={desc}
             onChange={e => setDesc(e.target.value)}
-            className="w-full bg-white border border-gray-200 rounded-2xl p-4 text-sm font-medium text-gray-900 outline-none focus:border-blue-700 h-32 resize-none"
+            className="w-full bg-white border border-gray-200 rounded-2xl p-4 text-sm font-medium text-gray-900 outline-none focus:border-blue-700 h-24 resize-none"
             placeholder="Provide more details about the issue..."
           />
+        </div>
+
+        {/* Evidence Photo Upload */}
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
+          <label className="text-sm font-extrabold text-gray-900 mb-2 block">Upload Evidence (Required)</label>
+          <p className="text-xs text-gray-400 font-semibold mb-4">Please upload a photo showing the issue with the work or behaviour.</p>
+
+          <input
+            type="file"
+            accept="image/*"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            className="hidden"
+          />
+
+          {photoPreview ? (
+            <div className="relative group rounded-2xl overflow-hidden aspect-video border border-gray-200 bg-gray-50 flex items-center justify-center">
+              <img src={photoPreview} alt="Evidence Preview" className="h-full w-full object-cover" />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white font-extrabold text-sm transition-opacity"
+              >
+                Change Photo 📸
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full aspect-video border-2 border-dashed border-gray-200 hover:border-blue-500 rounded-2xl flex flex-col items-center justify-center gap-2 bg-gray-50/50 hover:bg-blue-50/20 transition-all group"
+            >
+              <span className="text-3xl group-hover:scale-110 transition-transform">📸</span>
+              <span className="text-sm font-bold text-gray-700">Upload Photo Evidence</span>
+              <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Supports JPG, PNG</span>
+            </button>
+          )}
+
+          {uploading && (
+            <div className="mt-4">
+              <div className="flex justify-between items-center text-xs font-bold text-gray-600 mb-1.5">
+                <span>Uploading evidence to Cloudinary…</span>
+                <span>{progress}%</span>
+              </div>
+              <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full bg-blue-600 rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
+              </div>
+            </div>
+          )}
         </div>
 
         {error && <p className="text-red-500 text-sm font-semibold">{error}</p>}

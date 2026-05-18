@@ -185,7 +185,7 @@ const acceptBooking = async (req, res) => {
         });
 
         logger.info(`Booking ${booking.id} accepted by worker ${req.user.id}`);
-        return res.status(200).json({ message: 'Booking accepted', booking: updated, otp });
+        return res.status(200).json({ message: 'Booking accepted', booking: updated });
     } catch (error) {
         logger.error('acceptBooking error:', error);
         return res.status(500).json({ message: 'Internal server error' });
@@ -436,7 +436,8 @@ const getChat = async (req, res) => {
         // Only the user or the worker on this booking can read the chat
         const isUser   = req.user.role === 'USER'   && booking.userId   === req.user.id;
         const isWorker = req.user.role === 'WORKER' && booking.workerId === req.user.id;
-        if (!isUser && !isWorker) return res.status(403).json({ message: 'Forbidden' });
+        const isAdmin  = req.user.role === 'ADMIN';
+        if (!isUser && !isWorker && !isAdmin) return res.status(403).json({ message: 'Forbidden' });
 
         const messages = await prisma.chatMessage.findMany({
             where:   { bookingId: req.params.id },
@@ -596,6 +597,23 @@ const respondPriceChange = async (req, res) => {
     }
 };
 
+const getRecentReviews = async (req, res) => {
+    try {
+        const reviews = await prisma.review.findMany({
+            orderBy: { createdAt: 'desc' },
+            take: 15,
+            include: {
+                user: { select: { name: true, city: true } },
+                booking: { include: { category: { select: { name: true } } } },
+            },
+        });
+        return res.status(200).json(reviews);
+    } catch (error) {
+        logger.error('getRecentReviews error:', error);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
 module.exports = {
     createBooking,
     getPendingBookings,
@@ -611,4 +629,5 @@ module.exports = {
     getWorkersByCategory,
     requestPriceChange,
     respondPriceChange,
+    getRecentReviews,
 };
