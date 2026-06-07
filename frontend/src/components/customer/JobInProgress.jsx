@@ -1,6 +1,9 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import api from '../../utils/api';
+import { securePost } from '../../utils/securePost';
+import { useSelector } from 'react-redux';
+import StepUpAuthModal from '../ui/StepUpAuthModal';
 
 export default function JobInProgress() {
   const navigate  = useNavigate();
@@ -10,6 +13,9 @@ export default function JobInProgress() {
   const [booking, setBooking] = useState(null);
   const [secondsElapsed, setSecondsElapsed] = useState(0);
   const [hasUnread, setHasUnread] = useState(false);
+  const [stepUp, setStepUp]   = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
+  const phone = useSelector(s => s.auth.phone) || '';
 
   // Background check for unread chat messages
   useEffect(() => {
@@ -71,7 +77,12 @@ export default function JobInProgress() {
 
   const handlePriceAdjustment = async (action) => {
     try {
-      await api.post(`/booking/${bookingId}/respond-price`, { action });
+      const result = await securePost(`/booking/${bookingId}/respond-price`, { action });
+
+      if (result.sentinelVerdict === 'STEP_UP_AUTH') { setPendingAction(action); setStepUp(true); return; }
+      if (result.sentinelVerdict === 'BLOCK') { alert('Action blocked due to unusual activity.'); return; }
+      if (result.sentinelVerdict === 'TERMINATE_SESSION') { localStorage.removeItem('lt_token'); window.location.href = '/'; return; }
+
       const { data } = await api.get(`/user/bookings/${bookingId}`);
       setBooking(data);
     } catch (err) {
@@ -84,6 +95,13 @@ export default function JobInProgress() {
 
   return (
     <div className="flex flex-col h-full bg-gray-50 relative">
+      {stepUp && (
+        <StepUpAuthModal
+          phone={phone}
+          onVerified={() => { setStepUp(false); if (pendingAction) handlePriceAdjustment(pendingAction); }}
+          onDismiss={() => setStepUp(false)}
+        />
+      )}
       <div className="bg-blue-700 pt-12 pb-10 px-6 flex flex-col items-center justify-center text-white">
         <div className="flex items-center gap-2 bg-white/20 px-3 py-1 rounded-full mb-4">
           <div className="w-2 h-2 bg-white rounded-full animate-ping" />

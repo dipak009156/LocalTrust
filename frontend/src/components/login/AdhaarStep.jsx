@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useFlow } from '../../store/useFlow';
 import { uploadFile } from '../../firebase/uploadFile';
 import api from '../../utils/api';
+import { securePost } from '../../utils/securePost';
+import { useSelector } from 'react-redux';
+import StepUpAuthModal from '../ui/StepUpAuthModal';
 
 /**
  * AadhaarStep
@@ -18,6 +21,8 @@ export default function AadhaarStep() {
   const [progress, setProgress] = useState({ front: 0, back: 0, selfie: 0 });
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
+  const [stepUp, setStepUp] = useState(false);
+  const phone = useSelector(s => s.auth.phone) || '';
 
   const valid = kyc.front && kyc.back && kyc.selfie;
 
@@ -43,11 +48,15 @@ export default function AadhaarStep() {
       ]);
 
       // 2. Save KYC URLs to backend
-      await api.post('/worker/kyc', {
+      const result = await securePost('/worker/kyc', {
         aadhaarFront:  frontUrl,
         aadhaarBack:   backUrl,
         aadhaarSelfie: selfieUrl,
       });
+
+      if (result.sentinelVerdict === 'STEP_UP_AUTH') { setStepUp(true); return; }
+      if (result.sentinelVerdict === 'BLOCK') { setError('Action blocked due to unusual activity.'); return; }
+      if (result.sentinelVerdict === 'TERMINATE_SESSION') { localStorage.removeItem('lt_token'); window.location.href = '/'; return; }
 
       // 3. Save profile + skills, then move to submitted
       await submitWorkerOnboarding();
@@ -92,6 +101,13 @@ export default function AadhaarStep() {
 
   return (
     <div className="space-y-6">
+      {stepUp && (
+        <StepUpAuthModal
+          phone={phone}
+          onVerified={() => { setStepUp(false); handleSubmit(); }}
+          onDismiss={() => setStepUp(false)}
+        />
+      )}
       <div className="flex items-center gap-3">
         <button onClick={() => setStep('test')} className="text-slate-400 hover:text-slate-700 transition-colors">←</button>
         <div>

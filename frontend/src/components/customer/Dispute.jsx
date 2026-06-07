@@ -2,6 +2,9 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useState, useRef } from 'react';
 import { uploadFile } from '../../firebase/uploadFile';
 import api from '../../utils/api';
+import { securePost } from '../../utils/securePost';
+import { useSelector } from 'react-redux';
+import StepUpAuthModal from '../ui/StepUpAuthModal';
 
 const REASONS = [
   'Job not completed properly',
@@ -26,6 +29,8 @@ export default function Dispute() {
   const [photoPreview, setPhotoPreview] = useState(null);
   const [uploading,    setUploading]    = useState(false);
   const [progress,     setProgress]     = useState(0);
+  const [stepUp,       setStepUp]       = useState(false);
+  const phone = useSelector(s => s.auth.phone) || '';
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
@@ -59,11 +64,15 @@ export default function Dispute() {
       setUploading(false);
 
       // 2. Submit dispute with evidence array
-      await api.post('/dispute', {
+      const result = await securePost('/dispute', {
         bookingId,
         reason: desc ? `${reason} — ${desc}` : reason,
         userEvidence,
       });
+
+      if (result.sentinelVerdict === 'STEP_UP_AUTH') { setStepUp(true); return; }
+      if (result.sentinelVerdict === 'BLOCK') { setError('Action blocked due to unusual activity.'); return; }
+      if (result.sentinelVerdict === 'TERMINATE_SESSION') { localStorage.removeItem('lt_token'); window.location.href = '/'; return; }
 
       navigate('/customer/dispute-status', { state: { bookingId } });
     } catch (err) {
@@ -76,6 +85,13 @@ export default function Dispute() {
 
   return (
     <div className="flex flex-col h-full bg-gray-50 relative">
+      {stepUp && (
+        <StepUpAuthModal
+          phone={phone}
+          onVerified={() => { setStepUp(false); handleSubmit(); }}
+          onDismiss={() => setStepUp(false)}
+        />
+      )}
       <div className="bg-white px-6 py-5 sticky top-0 z-10 border-b border-gray-100 flex items-center gap-4">
         <button onClick={() => navigate(-1)} className="w-10 h-10 flex items-center justify-center rounded-full bg-gray-50 text-gray-900">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>

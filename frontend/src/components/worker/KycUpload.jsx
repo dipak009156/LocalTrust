@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { Camera, CheckCircle2, ShieldCheck, ChevronLeft } from 'lucide-react';
 import { uploadFile } from '../../firebase/uploadFile';
 import api from '../../utils/api';
+import { securePost } from '../../utils/securePost';
+import { useSelector } from 'react-redux';
+import StepUpAuthModal from '../ui/StepUpAuthModal';
 
 export default function KycUpload() {
   const navigate = useNavigate();
@@ -26,6 +29,8 @@ export default function KycUpload() {
   const [progress,  setProgress]  = useState(0);
   const [error,     setError]     = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [stepUp, setStepUp] = useState(false);
+  const phone = useSelector(s => s.auth.phone) || '';
 
   const fileInputRef = useRef(null);
 
@@ -80,7 +85,12 @@ export default function KycUpload() {
     setSubmitting(true);
     setError('');
     try {
-      await api.post('/worker/kyc', { aadhaarFront, aadhaarBack, aadhaarSelfie });
+      const result = await securePost('/worker/kyc', { aadhaarFront, aadhaarBack, aadhaarSelfie });
+
+      if (result.sentinelVerdict === 'STEP_UP_AUTH') { setStepUp(true); return; }
+      if (result.sentinelVerdict === 'BLOCK') { setError('Action blocked due to unusual activity.'); return; }
+      if (result.sentinelVerdict === 'TERMINATE_SESSION') { localStorage.removeItem('lt_token'); window.location.href = '/'; return; }
+
       navigate('/worker/profile');
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to submit KYC. Try again.');
@@ -94,6 +104,13 @@ export default function KycUpload() {
 
   return (
     <div className="flex flex-col h-full bg-white relative">
+      {stepUp && (
+        <StepUpAuthModal
+          phone={phone}
+          onVerified={() => { setStepUp(false); handleSubmit(); }}
+          onDismiss={() => setStepUp(false)}
+        />
+      )}
       {/* Header */}
       <div className="px-6 py-5 border-b border-gray-100 flex items-center gap-4">
         <button onClick={() => navigate(-1)} className="text-gray-900">

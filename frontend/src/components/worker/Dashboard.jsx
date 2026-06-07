@@ -7,6 +7,8 @@ import {
   ChevronRight, DollarSign, Zap, RefreshCw
 } from 'lucide-react';
 import api from '../../utils/api';
+import { securePost } from '../../utils/securePost';
+import StepUpAuthModal from '../ui/StepUpAuthModal';
 
 const CATEGORY_ICONS = {
   'Plumbing':   '🚰', 'Electrical': '⚡', 'Cleaning': '🧹',
@@ -23,6 +25,9 @@ export default function Dashboard() {
   const [jobLoading, setJobLoading]     = useState(false);
   const [availability, setAvailability] = useState(false);
   const [toggling, setToggling]         = useState(false);
+  const [stepUp, setStepUp]             = useState(false);
+  const [pendingJob, setPendingJob]     = useState(null);
+  const phone = auth.phone || '';
 
   // Job request countdown
   const [timeLeft, setTimeLeft] = useState({});
@@ -111,7 +116,12 @@ export default function Dashboard() {
 
   const handleAccept = async (job) => {
     try {
-      const { data } = await api.post(`/booking/${job.id}/accept`);
+      const result = await securePost(`/booking/${job.id}/accept`);
+
+      if (result.sentinelVerdict === 'STEP_UP_AUTH') { setPendingJob(job); setStepUp(true); return; }
+      if (result.sentinelVerdict === 'BLOCK') { alert('Action blocked due to unusual activity.'); fetchJobs(); return; }
+      if (result.sentinelVerdict === 'TERMINATE_SESSION') { localStorage.removeItem('lt_token'); window.location.href = '/'; return; }
+
       setActiveBooking({
         id:       job.id,
         service:  job.category?.name,
@@ -152,6 +162,13 @@ export default function Dashboard() {
 
   return (
     <div className="flex flex-col h-full bg-gray-50 relative pb-20 lg:pb-0">
+      {stepUp && (
+        <StepUpAuthModal
+          phone={phone}
+          onVerified={() => { setStepUp(false); if (pendingJob) handleAccept(pendingJob); }}
+          onDismiss={() => setStepUp(false)}
+        />
+      )}
       {/* Header */}
       <div className="bg-white px-6 py-5 sticky top-0 z-10 border-b border-gray-100 flex items-center justify-between">
         <div>

@@ -11,7 +11,9 @@ import {
   setKyc,
 } from './flowSlice';
 import { loginSuccess } from './authSlice';
+import { initializeSentinelSession } from '../utils/sentinelClient';
 import { SKILLS_LIST } from '../data/constants';
+
 
 // ── Demo credentials (only used when VITE_DEMO_MODE=true) ────────────────────
 export const DEMO_PHONE = '9699236125';
@@ -112,8 +114,11 @@ export function useFlow() {
       // 2. Store JWT in localStorage — api.js will attach it to every request
       setToken(data.token);
 
-      // 3. Save to Redux
+      // 3. Extract account and bind user to Sentinel
       const account = data.account ?? {};
+      initializeSentinelSession(account.id, data.token);
+
+      // 4. Save to Redux
       dispatch(loginSuccess({ phone: flow.phone, uid: account.id, ...account }));
 
       // Also save phone + name at top level for easy access in UI

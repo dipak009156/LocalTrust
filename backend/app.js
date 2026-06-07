@@ -7,9 +7,15 @@ const app = express();
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-    credentials: true,
+    origin:            process.env.FRONTEND_URL || 'http://localhost:5173',
+    credentials:       true,
+    allowedHeaders:    ['Content-Type', 'Authorization', 'x-session-id'],
 }));
+
+// ─── Sentinel Webhook ─────────────────────────────────────────────────────────
+// Registered here (after CORS, but the route itself uses express.json() internally)
+// Sentinel signs with JSON.stringify(body) so standard JSON parsing is fine.
+app.use('/webhooks/sentinel', require('./routes/sentinelWebhookRoute'));
 
 // ─── Body parsers ─────────────────────────────────────────────────────────────
 app.use(express.json());

@@ -4,6 +4,9 @@ import { db } from '../../firebase/config';
 import { ref as dbRef, set, remove } from 'firebase/database';
 import { useWorker } from '../../context/WorkerContext';
 import api from '../../utils/api';
+import { securePost } from '../../utils/securePost';
+import { useSelector } from 'react-redux';
+import StepUpAuthModal from '../ui/StepUpAuthModal';
 
 export default function EnRoute() {
   const navigate   = useNavigate();
@@ -25,6 +28,8 @@ export default function EnRoute() {
   const [newPrice,       setNewPrice]       = useState('');
   const [priceReason,    setPriceReason]    = useState('');
   const [hasUnread,      setHasUnread]      = useState(false);
+  const [stepUp,         setStepUp]         = useState(false);
+  const phone = useSelector(s => s.auth.phone) || '';
 
   // Background check for unread chat messages
   useEffect(() => {
@@ -220,10 +225,15 @@ export default function EnRoute() {
   const handleRequestPriceChange = async () => {
     if (!newPrice || !priceReason) return alert('Please enter price and reason');
     try {
-      await api.post(`/booking/${bookingId}/request-price`, {
+      const result = await securePost(`/booking/${bookingId}/request-price`, {
         amount: newPrice,
         reason: priceReason,
       });
+
+      if (result.sentinelVerdict === 'STEP_UP_AUTH') { setShowPriceModal(false); setStepUp(true); return; }
+      if (result.sentinelVerdict === 'BLOCK') { alert('Action blocked due to unusual activity.'); return; }
+      if (result.sentinelVerdict === 'TERMINATE_SESSION') { localStorage.removeItem('lt_token'); window.location.href = '/'; return; }
+
       alert('Price adjustment request sent to customer.');
       setShowPriceModal(false);
     } catch (err) {
@@ -233,6 +243,13 @@ export default function EnRoute() {
 
   return (
     <div className="flex flex-col relative overflow-hidden" style={{ height: '100dvh' }}>
+      {stepUp && (
+        <StepUpAuthModal
+          phone={phone}
+          onVerified={() => { setStepUp(false); handleRequestPriceChange(); }}
+          onDismiss={() => setStepUp(false)}
+        />
+      )}
       {/* Real Leaflet Map — full screen behind */}
       <div ref={mapRef} className="absolute inset-0" style={{ zIndex: 0 }} />
 

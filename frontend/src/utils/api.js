@@ -5,11 +5,15 @@ const api = axios.create({
     headers: { 'Content-Type': 'application/json' },
 });
 
-// ── Attach JWT from localStorage on every request ────────────────────────────
+// ── Attach JWT + session ID on every request ──────────────────────────────────
+// x-session-id is read by sentinelGuard for blacklist checks.
+// securePost.js also sets it, but having it here ensures it's present on
+// all routes including those not using securePost.
 api.interceptors.request.use((config) => {
     const token = localStorage.getItem('lt_token');
     if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+        config.headers.Authorization  = `Bearer ${token}`;
+        config.headers['x-session-id'] = token;
     }
     return config;
 });

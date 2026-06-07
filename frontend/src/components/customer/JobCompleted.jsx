@@ -1,6 +1,9 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import api from '../../utils/api';
+import { securePost } from '../../utils/securePost';
+import { useSelector } from 'react-redux';
+import StepUpAuthModal from '../ui/StepUpAuthModal';
 
 /**
  * JobCompleted — customer reviews the proof photo, confirms job, or raises dispute.
@@ -14,6 +17,8 @@ export default function JobCompleted() {
   const [booking, setBooking]   = useState(null);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
+  const [stepUp, setStepUp]     = useState(false);
+  const phone = useSelector(s => s.auth.phone) || '';
 
   useEffect(() => {
     if (!bookingId) return;
@@ -26,7 +31,12 @@ export default function JobCompleted() {
     setLoading(true);
     setError('');
     try {
-      await api.post(`/booking/${bookingId}/confirm`);
+      const result = await securePost(`/booking/${bookingId}/confirm`);
+
+      if (result.sentinelVerdict === 'STEP_UP_AUTH') { setStepUp(true); return; }
+      if (result.sentinelVerdict === 'BLOCK') { setError('Action blocked due to unusual activity.'); return; }
+      if (result.sentinelVerdict === 'TERMINATE_SESSION') { localStorage.removeItem('lt_token'); window.location.href = '/'; return; }
+
       navigate('/customer/review', { state: { bookingId } });
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to confirm. Please try again.');
@@ -37,6 +47,13 @@ export default function JobCompleted() {
 
   return (
     <div className="flex flex-col h-full bg-gray-50 relative">
+      {stepUp && (
+        <StepUpAuthModal
+          phone={phone}
+          onVerified={() => { setStepUp(false); handleConfirm(); }}
+          onDismiss={() => setStepUp(false)}
+        />
+      )}
       <div className="bg-white px-6 py-5 sticky top-0 z-10 border-b border-gray-100 text-center">
         <h1 className="text-xl font-extrabold text-gray-900">Review Job</h1>
       </div>

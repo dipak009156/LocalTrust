@@ -1,6 +1,9 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useState, useRef } from 'react';
 import api from '../../utils/api';
+import { securePost } from '../../utils/securePost';
+import { useSelector } from 'react-redux';
+import StepUpAuthModal from '../ui/StepUpAuthModal';
 
 /**
  * OtpEntry — Worker types the 4-digit OTP shown to the customer.
@@ -17,6 +20,8 @@ export default function OtpEntry() {
   const [errMsg, setErrMsg]   = useState('Incorrect OTP. Try again.');
   const [loading, setLoading] = useState(false);
   const inputRefs             = [useRef(), useRef(), useRef(), useRef()];
+  const [stepUp, setStepUp]   = useState(false);
+  const phone = useSelector(s => s.auth.phone) || '';
 
   const handleChange = (index, value) => {
     if (value && !/^\d+$/.test(value)) return;
@@ -41,7 +46,12 @@ export default function OtpEntry() {
     setError(false);
 
     try {
-      await api.post(`/booking/${bookingId}/verify-otp`, { otp: otp.join('') });
+      const result = await securePost(`/booking/${bookingId}/verify-otp`, { otp: otp.join('') });
+
+      if (result.sentinelVerdict === 'STEP_UP_AUTH') { setStepUp(true); return; }
+      if (result.sentinelVerdict === 'BLOCK') { setErrMsg('Action blocked due to unusual activity.'); setError(true); return; }
+      if (result.sentinelVerdict === 'TERMINATE_SESSION') { localStorage.removeItem('lt_token'); window.location.href = '/'; return; }
+
       navigate('/worker/job-in-progress', { state: { bookingId } });
     } catch (err) {
       setErrMsg(err.response?.data?.message || 'Incorrect OTP. Try again.');
@@ -55,6 +65,13 @@ export default function OtpEntry() {
 
   return (
     <div className="flex flex-col bg-white relative" style={{ minHeight: '100dvh' }}>
+      {stepUp && (
+        <StepUpAuthModal
+          phone={phone}
+          onVerified={() => { setStepUp(false); handleSubmit(); }}
+          onDismiss={() => setStepUp(false)}
+        />
+      )}
       <div className="px-6 py-5 sticky top-0 z-10 flex items-center">
         <button onClick={() => navigate(-1)} className="w-10 h-10 flex items-center justify-center rounded-full bg-gray-50 text-gray-900 border border-gray-100">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>

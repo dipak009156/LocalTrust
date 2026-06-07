@@ -3,6 +3,9 @@ import { useEffect, useRef, useState } from 'react';
 import { db } from '../../firebase/config';
 import { ref, onValue, off } from 'firebase/database';
 import api from '../../utils/api';
+import { securePost } from '../../utils/securePost';
+import { useSelector } from 'react-redux';
+import StepUpAuthModal from '../ui/StepUpAuthModal';
 
 /**
  * LiveTracking — Customer sees worker moving on the map in real time.
@@ -23,6 +26,9 @@ export default function LiveTracking() {
   const [connected,  setConnected]  = useState(false);
   const [booking,    setBooking]    = useState(null);
   const [hasUnread,  setHasUnread]   = useState(false);
+  const [stepUp,     setStepUp]     = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
+  const phone = useSelector(s => s.auth.phone) || '';
 
   // Background check for unread chat messages
   useEffect(() => {
@@ -71,7 +77,12 @@ export default function LiveTracking() {
 
   const handlePriceAdjustment = async (action) => {
     try {
-      await api.post(`/booking/${bookingId}/respond-price`, { action });
+      const result = await securePost(`/booking/${bookingId}/respond-price`, { action });
+
+      if (result.sentinelVerdict === 'STEP_UP_AUTH') { setPendingAction(action); setStepUp(true); return; }
+      if (result.sentinelVerdict === 'BLOCK') { alert('Action blocked due to unusual activity.'); return; }
+      if (result.sentinelVerdict === 'TERMINATE_SESSION') { localStorage.removeItem('lt_token'); window.location.href = '/'; return; }
+
       const { data } = await api.get(`/user/bookings/${bookingId}`);
       setBooking(data);
     } catch (err) {
@@ -199,6 +210,13 @@ export default function LiveTracking() {
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
+      {stepUp && (
+        <StepUpAuthModal
+          phone={phone}
+          onVerified={() => { setStepUp(false); if (pendingAction) handlePriceAdjustment(pendingAction); }}
+          onDismiss={() => setStepUp(false)}
+        />
+      )}
       {/* Map */}
       <div ref={mapRef} className="flex-1" style={{ minHeight: '300px' }} />
 

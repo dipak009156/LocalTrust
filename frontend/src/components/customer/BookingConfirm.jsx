@@ -1,7 +1,9 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { ArrowLeft, MapPin, ShieldCheck } from 'lucide-react';
-import api from '../../utils/api';
+import { securePost } from '../../utils/securePost';
+import { useSelector } from 'react-redux';
+import StepUpAuthModal from '../ui/StepUpAuthModal';
 
 export default function BookingConfirm() {
   const navigate  = useNavigate();
@@ -22,6 +24,9 @@ export default function BookingConfirm() {
   const [note, setNote]         = useState('');
   const [locating, setLocating] = useState(false);
   const [geoError, setGeoError] = useState('');
+  const [stepUp, setStepUp]     = useState(false);
+
+  const phone = useSelector(s => s.auth.phone) || '';
 
   // Auto-detect location on mount
   useEffect(() => {
@@ -75,7 +80,7 @@ export default function BookingConfirm() {
     setError('');
 
     try {
-      const { data } = await api.post('/booking', {
+      const result = await securePost('/booking', {
         categoryId,
         address,
         lat:         lat   ?? null,
@@ -83,8 +88,23 @@ export default function BookingConfirm() {
         problemDesc: note  || null,
       });
 
-      // Navigate to Waiting screen with bookingId
-      navigate('/customer/waiting', { state: { bookingId: data.id } });
+      // Sentinel verdict handling
+      if (result.sentinelVerdict === 'STEP_UP_AUTH') {
+        setStepUp(true);
+        return;
+      }
+      if (result.sentinelVerdict === 'BLOCK') {
+        setError('This action was blocked due to unusual activity. Please try again later.');
+        return;
+      }
+      if (result.sentinelVerdict === 'TERMINATE_SESSION') {
+        localStorage.removeItem('lt_token');
+        window.location.href = '/';
+        return;
+      }
+
+      // Normal success — navigate to Waiting screen
+      navigate('/customer/waiting', { state: { bookingId: result.id } });
     } catch (err) {
       setError(err.response?.data?.message || 'Booking failed. Please try again.');
     } finally {
@@ -94,6 +114,14 @@ export default function BookingConfirm() {
 
   return (
     <div className="flex flex-col h-full bg-gray-50 relative">
+      {/* Sentinel step-up OTP modal */}
+      {stepUp && (
+        <StepUpAuthModal
+          phone={phone}
+          onVerified={() => { setStepUp(false); handleConfirm(); }}
+          onDismiss={() => setStepUp(false)}
+        />
+      )}
       <div className="bg-white px-6 py-5 sticky top-0 z-10 border-b border-gray-100 flex items-center gap-4">
         <button onClick={() => navigate(-1)} className="w-10 h-10 flex items-center justify-center rounded-full bg-gray-50 text-gray-900 hover:bg-gray-100 transition-colors">
           <ArrowLeft size={20} />
