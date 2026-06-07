@@ -63,7 +63,7 @@ const sentinelGuard = (actionType = 'generic_action') => {
             const isShadowMode = process.env.SENTINEL_SHADOW_MODE === 'true';
 
             // ── 3. Extract telemetry injected by securePost.js ─────────────────
-            const { sentinelTelemetry } = req.body;
+            const { sentinelTelemetry } = req.body || {};
 
             // ── 4. Call Sentinel /evaluate (server-to-server) ──────────────────
             // Check cache first — if this user was evaluated in the last 2s, reuse verdict.
