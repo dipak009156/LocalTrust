@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 
 const { requireAuth, requireUser } = require('../middleware/auth');
+const sentinelGuard = require('../middleware/sentinelGuard');
 const {
     getProfile,
     updateProfile,
@@ -21,7 +22,7 @@ router.use(requireAuth, requireUser);
 router.get   ('/profile',                  getProfile);
 router.patch ('/profile',                  updateProfile);
 router.get   ('/bookings',                 getBookings);
-router.get   ('/bookings/active',          getActiveBooking);
+router.get   ('/bookings/active',          sentinelGuard('session_heartbeat'), getActiveBooking);
 router.get   ('/bookings/:id',             getBookingDetail);
 router.get   ('/favourites',               getFavourites);
 router.post  ('/favourites/:workerId',     addFavourite);

@@ -12,8 +12,8 @@
  * Your app must never go down because Sentinel is down.
  */
 
-const axios            = require('axios');
-const logger           = require('../utils/logger');
+const axios = require('axios');
+const logger = require('../utils/logger');
 const sessionBlacklist = require('../utils/sessionBlacklist');
 
 // ── Per-user verdict cache (2-second debounce) ─────────────────────────────────
@@ -42,7 +42,7 @@ const sentinelGuard = (actionType = 'generic_action') => {
             // securePost.js sends x-session-id; fall back to Authorization JWT.
             // Truncate long JWTs to avoid DB column overflow in Sentinel.
             const rawSessionId = req.headers['x-session-id'] || req.headers.authorization || '';
-            const sessionId    = rawSessionId.length > 128
+            const sessionId = rawSessionId.length > 128
                 ? rawSessionId.slice(-128)
                 : rawSessionId;
 
@@ -54,9 +54,9 @@ const sentinelGuard = (actionType = 'generic_action') => {
             // added to the blacklist. Checking here avoids a Sentinel API call.
             if (sessionId && sessionBlacklist.has(sessionId)) {
                 return res.status(403).json({
-                    success:         false,
+                    success: false,
                     sentinelVerdict: 'TERMINATE_SESSION',
-                    message:         'Your session has been terminated due to suspicious activity. Please log in again.',
+                    message: 'Your session has been terminated due to suspicious activity. Please log in again.',
                 });
             }
 
@@ -73,26 +73,26 @@ const sentinelGuard = (actionType = 'generic_action') => {
                 const response = await axios.post(
                     process.env.SENTINEL_API_URL,
                     {
-                        user_id:    String(userId),
+                        user_id: String(userId),
                         session_id: String(sessionId),
-                        action:     { type: actionType },
+                        action: { type: actionType },
                         network: {
                             ip_address: (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
-                                        || req.socket?.remoteAddress
-                                        || '127.0.0.1',
+                                || req.socket?.remoteAddress
+                                || '127.0.0.1',
                             user_agent: req.headers['user-agent'] || 'unknown',
                         },
-                        device:   sentinelTelemetry?.device || {},
+                        device: sentinelTelemetry?.device || {},
                         behavioral: {
-                            typing_speed:   parseFloat(sentinelTelemetry?.behavioral?.typing_speed)  || 0,
+                            typing_speed: parseFloat(sentinelTelemetry?.behavioral?.typing_speed) || 0,
                             mouse_velocity: parseFloat(sentinelTelemetry?.behavioral?.mouse_velocity) || 0,
-                            time_on_page:   parseInt(sentinelTelemetry?.behavioral?.time_on_page)     || 0,
+                            time_on_page: parseInt(sentinelTelemetry?.behavioral?.time_on_page) || 0,
                         },
                     },
                     {
                         headers: {
                             'X-Sentinel-Key': process.env.SENTINEL_SECRET_KEY,
-                            'Content-Type':   'application/json',
+                            'Content-Type': 'application/json',
                         },
                         timeout: 15000,
                     }
@@ -119,27 +119,27 @@ const sentinelGuard = (actionType = 'generic_action') => {
                     // blocked instantly without another Sentinel call.
                     sessionBlacklist.add(sessionId);
                     return res.status(403).json({
-                        success:         false,
+                        success: false,
                         sentinelVerdict: 'TERMINATE_SESSION',
-                        message:         'Your session has been terminated due to suspicious activity. Please log in again.',
+                        message: 'Your session has been terminated due to suspicious activity. Please log in again.',
                     });
 
                 case 'BLOCK':
                     // High risk — block this specific action, session stays alive.
                     return res.status(403).json({
-                        success:         false,
+                        success: false,
                         sentinelVerdict: 'BLOCK',
-                        message:         'This action was blocked due to unusual activity. Please try again.',
+                        message: 'This action was blocked due to unusual activity. Please try again.',
                     });
 
                 case 'REQUIRE_MFA':
                 case 'STEP_UP_AUTH':
                     // Medium risk — frontend shows OTP step-up modal, then retries.
                     return res.status(200).json({
-                        success:         false,
+                        success: false,
                         sentinelVerdict: 'STEP_UP_AUTH',
-                        stepUpRequired:  true,
-                        message:         'Verification required to complete this action.',
+                        stepUpRequired: true,
+                        message: 'Verification required to complete this action.',
                     });
 
                 default:
