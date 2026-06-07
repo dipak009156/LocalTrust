@@ -16,6 +16,25 @@ const axios            = require('axios');
 const logger           = require('../utils/logger');
 const sessionBlacklist = require('../utils/sessionBlacklist');
 
+// ── Per-user verdict cache (2-second debounce) ─────────────────────────────────
+// Prevents hammering /evaluate when a single user action fires multiple API calls
+// in rapid succession (e.g. booking flow). Key: userId, Value: { verdict, ts }.
+const verdictCache = new Map();
+const CACHE_TTL_MS = 2000; // 2 seconds
+
+function getCachedVerdict(userId) {
+    const entry = verdictCache.get(userId);
+    if (entry && (Date.now() - entry.ts) < CACHE_TTL_MS) return entry.verdict;
+    verdictCache.delete(userId);
+    return null;
+}
+
+function setCachedVerdict(userId, verdict) {
+    verdictCache.set(userId, { verdict, ts: Date.now() });
+    // Auto-cleanup to prevent unbounded memory growth
+    setTimeout(() => verdictCache.delete(userId), CACHE_TTL_MS + 100);
+}
+
 const sentinelGuard = (actionType = 'generic_action') => {
     return async (req, res, next) => {
         try {
@@ -41,49 +60,57 @@ const sentinelGuard = (actionType = 'generic_action') => {
                 });
             }
 
-            // ── 2. Shadow mode ─────────────────────────────────────────────────
-            // When SENTINEL_SHADOW_MODE=true, Sentinel collects data but never
-            // blocks. Use this for the first 2 weeks to build behavioral baselines.
-            if (process.env.SENTINEL_SHADOW_MODE === 'true') {
-                return next();
-            }
+            const isShadowMode = process.env.SENTINEL_SHADOW_MODE === 'true';
 
             // ── 3. Extract telemetry injected by securePost.js ─────────────────
             const { sentinelTelemetry } = req.body;
 
             // ── 4. Call Sentinel /evaluate (server-to-server) ──────────────────
-            const response = await axios.post(
-                process.env.SENTINEL_API_URL,   // e.g. http://localhost:3001/evaluate
-                {
-                    user_id:    String(userId),
-                    session_id: String(sessionId),
-                    action:     { type: actionType },
-                    network: {
-                        ip_address: (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
-                                    || req.socket?.remoteAddress
-                                    || '127.0.0.1',
-                        user_agent: req.headers['user-agent'] || 'unknown',
-                    },
-                    device:   sentinelTelemetry?.device || {},
-                    behavioral: {
-                        typing_speed:   parseFloat(sentinelTelemetry?.behavioral?.typing_speed)  || 0,
-                        mouse_velocity: parseFloat(sentinelTelemetry?.behavioral?.mouse_velocity) || 0,
-                        time_on_page:   parseInt(sentinelTelemetry?.behavioral?.time_on_page)     || 0,
-                    },
-                },
-                {
-                    headers: {
-                        'X-Sentinel-Key': process.env.SENTINEL_SECRET_KEY,  // confirmed header name from Sentinel auth.js
-                        'Content-Type':   'application/json',
-                    },
-                    timeout: 15000,   // 15s — Sentinel may run cold-start DB queries
-                }
-            );
+            // Check cache first — if this user was evaluated in the last 2s, reuse verdict.
+            let recommended_action = getCachedVerdict(userId);
 
-            // ── 5. Enforce verdict ─────────────────────────────────────────────
-            // recommended_action confirmed from Sentinel services/evaluate.js response
-            const { recommended_action, risk } = response.data;
-            logger.info(`[Sentinel] ${actionType} | User: ${userId} | Score: ${risk?.score ?? 'n/a'} | Verdict: ${recommended_action}`);
+            if (!recommended_action) {
+                const response = await axios.post(
+                    process.env.SENTINEL_API_URL,
+                    {
+                        user_id:    String(userId),
+                        session_id: String(sessionId),
+                        action:     { type: actionType },
+                        network: {
+                            ip_address: (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+                                        || req.socket?.remoteAddress
+                                        || '127.0.0.1',
+                            user_agent: req.headers['user-agent'] || 'unknown',
+                        },
+                        device:   sentinelTelemetry?.device || {},
+                        behavioral: {
+                            typing_speed:   parseFloat(sentinelTelemetry?.behavioral?.typing_speed)  || 0,
+                            mouse_velocity: parseFloat(sentinelTelemetry?.behavioral?.mouse_velocity) || 0,
+                            time_on_page:   parseInt(sentinelTelemetry?.behavioral?.time_on_page)     || 0,
+                        },
+                    },
+                    {
+                        headers: {
+                            'X-Sentinel-Key': process.env.SENTINEL_SECRET_KEY,
+                            'Content-Type':   'application/json',
+                        },
+                        timeout: 15000,
+                    }
+                );
+
+                const risk = response.data?.risk;
+                recommended_action = response.data?.recommended_action ?? 'ALLOW';
+                logger.info(`[Sentinel] ${actionType} | User: ${userId} | Score: ${risk?.score ?? 'n/a'} | Verdict: ${recommended_action}`);
+                setCachedVerdict(userId, recommended_action);
+            } else {
+                logger.info(`[Sentinel] ${actionType} | User: ${userId} | Verdict: ${recommended_action} (cached)`);
+            }
+
+
+            if (isShadowMode && recommended_action !== 'ALLOW') {
+                logger.info(`[Sentinel] SHADOW MODE — Would have enforced: ${recommended_action}`);
+                return next();
+            }
 
             switch (recommended_action) {
 
