@@ -22,17 +22,21 @@ const sessionBlacklist = require('../utils/sessionBlacklist');
 const verdictCache = new Map();
 const CACHE_TTL_MS = 2000; // 2 seconds
 
-function getCachedVerdict(userId) {
-    const entry = verdictCache.get(userId);
+function getCachedVerdict(userId, sessionId, actionType) {
+    const key = `${userId}:${sessionId}:${actionType}`;
+    const entry = verdictCache.get(key);
     if (entry && (Date.now() - entry.ts) < CACHE_TTL_MS) return entry.verdict;
-    verdictCache.delete(userId);
+    verdictCache.delete(key);
     return null;
 }
 
-function setCachedVerdict(userId, verdict) {
-    verdictCache.set(userId, { verdict, ts: Date.now() });
+function setCachedVerdict(userId, sessionId, actionType, verdict) {
+    // BUG-008 FIX: include sessionId in cache key so different sessions
+    // for the same user don't share a single cache entry.
+    const key = `${userId}:${sessionId}:${actionType}`;
+    verdictCache.set(key, { verdict, ts: Date.now() });
     // Auto-cleanup to prevent unbounded memory growth
-    setTimeout(() => verdictCache.delete(userId), CACHE_TTL_MS + 100);
+    setTimeout(() => verdictCache.delete(key), CACHE_TTL_MS + 100);
 }
 
 const sentinelGuard = (actionType = 'generic_action') => {
@@ -67,7 +71,7 @@ const sentinelGuard = (actionType = 'generic_action') => {
 
             // ── 4. Call Sentinel /evaluate (server-to-server) ──────────────────
             // Check cache first — if this user was evaluated in the last 2s, reuse verdict.
-            let recommended_action = getCachedVerdict(userId);
+            let recommended_action = getCachedVerdict(userId, sessionId, actionType);
 
             if (!recommended_action) {
                 const response = await axios.post(
@@ -101,7 +105,7 @@ const sentinelGuard = (actionType = 'generic_action') => {
                 const risk = response.data?.risk;
                 recommended_action = response.data?.recommended_action ?? 'ALLOW';
                 logger.info(`[Sentinel] ${actionType} | User: ${userId} | Score: ${risk?.score ?? 'n/a'} | Verdict: ${recommended_action}`);
-                setCachedVerdict(userId, recommended_action);
+                setCachedVerdict(userId, sessionId, actionType, recommended_action);
             } else {
                 logger.info(`[Sentinel] ${actionType} | User: ${userId} | Verdict: ${recommended_action} (cached)`);
             }

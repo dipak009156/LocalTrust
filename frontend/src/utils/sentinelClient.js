@@ -12,8 +12,9 @@ import SentinelSDK from './sentinel-sdk';
 
 // One shared instance — starts collecting mouse + keyboard data immediately.
 export const sentinel = new SentinelSDK({
-    // Points to LocalTrust backend. The backend makes the server-to-server
-    // call to Sentinel. The frontend never calls Sentinel directly.
+    // VITE_SENTINEL_ENDPOINT: the Sentinel /evaluate URL.
+    // LocalTrust backend makes the actual server-to-server call — this endpoint
+    // is used only by the SDK to structure its telemetry snapshot.
     endpoint: import.meta.env.VITE_SENTINEL_ENDPOINT || 'http://localhost:3001/evaluate',
     apiKey:   import.meta.env.VITE_SENTINEL_API_KEY,
 });

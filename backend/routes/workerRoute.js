@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 
 const { requireAuth, requireWorker, requireVerifiedWorker } = require('../middleware/auth');
+const sentinelGuard = require('../middleware/sentinelGuard');
 const {
     getProfile,
     updateProfile,
@@ -20,9 +21,9 @@ router.use(requireAuth, requireWorker);
 
 router.get   ('/profile',                  getProfile);
 router.patch ('/profile',                  updateProfile);
-router.patch ('/availability',             toggleAvailability);
-router.post  ('/kyc',                      submitKyc);
-router.post  ('/skills',                   saveSkills);
+router.patch ('/availability',             sentinelGuard('toggle_availability'), toggleAvailability);
+router.post  ('/kyc',                      sentinelGuard('submit_kyc'),          submitKyc);
+router.post  ('/skills',                   sentinelGuard('save_skills'),         saveSkills);
 router.get   ('/jobs',                     requireVerifiedWorker, getJobs);
 router.get   ('/bookings/:id',             requireVerifiedWorker, getBookingDetail);
 router.get   ('/earnings',                 requireVerifiedWorker, getEarnings);

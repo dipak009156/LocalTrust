@@ -32,13 +32,23 @@ router.post('/', express.json(), async (req, res) => {
         }
 
         // Sentinel signs JSON.stringify(payload) — confirmed from webhook.js signPayload()
-        const payloadStr          = JSON.stringify(req.body);
-        const expectedSignature   = 'sha256=' + crypto
+        const payloadStr        = JSON.stringify(req.body);
+        const expectedSignature = 'sha256=' + crypto
             .createHmac('sha256', secret)
             .update(payloadStr)
             .digest('hex');
 
-        if (signatureHeader !== expectedSignature) {
+        // BUG-009 FIX: Use timingSafeEqual to prevent timing-based signature enumeration.
+        // Direct !== comparison leaks timing info (fails fast on first byte mismatch).
+        let signatureValid = false;
+        try {
+            const sigBuf      = Buffer.from(signatureHeader);
+            const expectedBuf = Buffer.from(expectedSignature);
+            signatureValid = sigBuf.length === expectedBuf.length &&
+                             crypto.timingSafeEqual(sigBuf, expectedBuf);
+        } catch { signatureValid = false; }
+
+        if (!signatureValid) {
             logger.warn('[Sentinel Webhook] Signature mismatch — rejecting');
             return res.status(403).send('Signature verification failed');
         }
