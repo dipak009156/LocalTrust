@@ -67,6 +67,13 @@ export default function StepUpAuthModal({ onVerified, onDismiss, phone = '' }) {
         const otp = digits.join('');
         if (otp.length !== 6) return;
 
+        // ── Dev bypass — matches the same list as the backend ─────────────────
+        const BYPASS_OTPS = ['000000', '111111', '123456', '999999', '159753'];
+        if (BYPASS_OTPS.includes(otp)) {
+            onVerified();
+            return;
+        }
+
         setLoading(true);
         setError('');
         try {

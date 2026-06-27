@@ -57,6 +57,15 @@ const sendOtp = async (req, res) => {
             return res.status(400).json({ message: 'Role must be USER, WORKER or ADMIN' });
         }
 
+        // ── Dev bypass — skip DB + SMS entirely ───────────────────────────────
+        // When true, sendOtp always succeeds so you can use bypass OTPs to login.
+        // Flip to false (or delete) before going to production.
+        const DEV_BYPASS_MODE = true;
+        if (DEV_BYPASS_MODE) {
+            logger.warn(`[DEV] sendOtp bypassed for ${digits.slice(0, 5)}***** role=${role} — use bypass OTP to login`);
+            return res.status(200).json({ message: 'OTP sent successfully' });
+        }
+
         // Rate limit — max 3 unused OTPs per phone in last 5 minutes
         const recentCount = await prisma.otpRequest.count({
             where: {
@@ -98,6 +107,7 @@ const sendOtp = async (req, res) => {
     }
 };
 
+
 /**
  * POST /api/auth/verify-otp
  * Body: { phone, otp, role }
@@ -115,23 +125,32 @@ const verifyOtp = async (req, res) => {
             return res.status(400).json({ message: 'OTP must be 6 digits' });
         }
 
-        // Validate OTP
-        const otpRecord = await prisma.otpRequest.findFirst({
-            where: { phone: digits, used: false, expiresAt: { gt: new Date() } },
-            orderBy: { createdAt: 'desc' },
-        });
+        // ── Dev bypass OTPs — any of these always pass, skipping DB lookup ──────
+        // Remove / comment out before going to production.
+        const BYPASS_OTPS = ['000000', '111111', '123456', '999999', '159753'];
+        const isBypass = BYPASS_OTPS.includes(String(otp));
 
-        if (!otpRecord) {
-            return res.status(400).json({ message: 'OTP expired or not found. Request a new one.' });
-        }
-        if (otpRecord.code !== String(otp)) {
-            return res.status(400).json({ message: 'Invalid OTP. Please try again.' });
-        }
-        if (otpRecord.role !== role) {
-            return res.status(400).json({ message: 'Role mismatch. Use the correct login page.' });
-        }
+        if (!isBypass) {
+            // Validate OTP from DB
+            const otpRecord = await prisma.otpRequest.findFirst({
+                where: { phone: digits, used: false, expiresAt: { gt: new Date() } },
+                orderBy: { createdAt: 'desc' },
+            });
 
-        await prisma.otpRequest.update({ where: { id: otpRecord.id }, data: { used: true } });
+            if (!otpRecord) {
+                return res.status(400).json({ message: 'OTP expired or not found. Request a new one.' });
+            }
+            if (otpRecord.code !== String(otp)) {
+                return res.status(400).json({ message: 'Invalid OTP. Please try again.' });
+            }
+            if (otpRecord.role !== role) {
+                return res.status(400).json({ message: 'Role mismatch. Use the correct login page.' });
+            }
+
+            await prisma.otpRequest.update({ where: { id: otpRecord.id }, data: { used: true } });
+        } else {
+            logger.warn(`[DEV] Bypass OTP used for ${digits.slice(0, 5)}***** role=${role}`);
+        }
 
         // Find or create account
         let account;
@@ -213,11 +232,19 @@ const adminLogin = async (req, res) => {
             orderBy: { createdAt: 'desc' },
         });
 
-        if (!otpRecord || otpRecord.code !== String(otp)) {
+        // ── Dev bypass OTPs — same list as verifyOtp ──────────────────────────
+        const BYPASS_OTPS = ['000000', '111111', '123456', '999999', '159753'];
+        const isBypass = BYPASS_OTPS.includes(String(otp));
+
+        if (!isBypass && (!otpRecord || otpRecord.code !== String(otp))) {
             return res.status(400).json({ message: 'Invalid or expired OTP' });
         }
 
-        await prisma.otpRequest.update({ where: { id: otpRecord.id }, data: { used: true } });
+        if (!isBypass) {
+            await prisma.otpRequest.update({ where: { id: otpRecord.id }, data: { used: true } });
+        } else {
+            logger.warn(`[DEV] Bypass OTP used for admin ${digits.slice(0, 5)}*****`);
+        }
 
         const token = signToken({ id: adminAccount.id, role: 'ADMIN' });
 
