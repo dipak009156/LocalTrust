@@ -1,20 +1,21 @@
 import axios from 'axios';
+import { TAB_SESSION_ID } from './sentinelClient';
 
 const api = axios.create({
     baseURL: import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000/api',
     headers: { 'Content-Type': 'application/json' },
 });
 
-// ── Attach JWT + session ID on every request ──────────────────────────────────
+// ── Attach JWT + tab-unique session ID on every request ───────────────────────
 // x-session-id is read by sentinelGuard for blacklist checks.
-// securePost.js also sets it, but having it here ensures it's present on
-// all routes including those not using securePost.
+// TAB_SESSION_ID is a UUID unique per browser tab (stored in sessionStorage),
+// so concurrent-session detection works even when two tabs share the same JWT.
 api.interceptors.request.use((config) => {
     const token = localStorage.getItem('lt_token');
     if (token) {
-        config.headers.Authorization  = `Bearer ${token}`;
-        config.headers['x-session-id'] = token;
+        config.headers.Authorization = `Bearer ${token}`;
     }
+    config.headers['x-session-id'] = TAB_SESSION_ID;
     return config;
 });
 

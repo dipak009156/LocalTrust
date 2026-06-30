@@ -20,7 +20,7 @@ const sessionBlacklist = require('../utils/sessionBlacklist');
 // Prevents hammering /evaluate when a single user action fires multiple API calls
 // in rapid succession (e.g. booking flow). Key: userId, Value: { verdict, ts }.
 const verdictCache = new Map();
-const CACHE_TTL_MS = 2000; // 2 seconds
+const CACHE_TTL_MS = 200; // reduced from 2000ms — rapid requests must reach Sentinel individually
 
 function getCachedVerdict(userId, sessionId, actionType) {
     const key = `${userId}:${sessionId}:${actionType}`;
@@ -86,11 +86,25 @@ const sentinelGuard = (actionType = 'generic_action') => {
                                 || '127.0.0.1',
                             user_agent: req.headers['user-agent'] || 'unknown',
                         },
+                        // geo: only include fields that have real values
+                        ...((() => {
+                            const lat = parseFloat(sentinelTelemetry?.geo?.lat || req.headers['x-geo-lat']);
+                            const lon = parseFloat(sentinelTelemetry?.geo?.lon || req.headers['x-geo-lon']);
+                            const country = sentinelTelemetry?.geo?.country || req.headers['x-geo-country'];
+                            const geo = {};
+                            if (!isNaN(lat)) geo.lat = lat;
+                            if (!isNaN(lon)) geo.lon = lon;
+                            if (country) geo.country = country;
+                            return Object.keys(geo).length ? { geo } : {};
+                        })()),
                         device: sentinelTelemetry?.device || {},
                         behavioral: {
                             typing_speed: parseFloat(sentinelTelemetry?.behavioral?.typing_speed) || 0,
                             mouse_velocity: parseFloat(sentinelTelemetry?.behavioral?.mouse_velocity) || 0,
                             time_on_page: parseInt(sentinelTelemetry?.behavioral?.time_on_page) || 0,
+                        },
+                        flags: {
+                            is_vpn: req.headers['x-is-vpn'] === 'true' || false,
                         },
                     },
                     {
@@ -153,7 +167,9 @@ const sentinelGuard = (actionType = 'generic_action') => {
 
         } catch (err) {
             // Fail-open: Sentinel is unreachable or threw — let request through.
-            logger.error(`[Sentinel] Fail-open (${actionType}): ${err.message}`);
+            const errBody = err.response?.data ? JSON.stringify(err.response.data) : '';
+            const status  = err.response?.status ?? 'no-response';
+            logger.error(`[Sentinel] Fail-open (${actionType}) HTTP ${status}: ${err.message} ${errBody}`);
             return next();
         }
     };

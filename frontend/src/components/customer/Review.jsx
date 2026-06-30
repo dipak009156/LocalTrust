@@ -1,6 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useState } from 'react';
-import api from '../../utils/api';
+import { securePost } from '../../utils/securePost';
 
 const TAGS = ['On Time', 'Polite', 'Clean Work', 'Good Price', 'Professional', 'Skilled', 'Friendly'];
 
@@ -27,7 +27,7 @@ export default function Review() {
     setLoading(true);
     setError('');
     try {
-      await api.post(`/booking/${bookingId}/review`, {
+      await securePost(`/booking/${bookingId}/review`, {
         rating,
         tags:    selectedTags,
         comment: comment || null,

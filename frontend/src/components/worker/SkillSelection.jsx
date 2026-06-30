@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Briefcase, CheckCircle2, ChevronLeft, Search } from 'lucide-react';
 import api from '../../utils/api';
+import { securePost } from '../../utils/securePost';
 
 export default function SkillSelection() {
   const navigate = useNavigate();
@@ -9,6 +10,7 @@ export default function SkillSelection() {
   const [selected, setSelected] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     api.get('/booking/categories')
@@ -26,14 +28,18 @@ export default function SkillSelection() {
   const handleSave = async () => {
     if (selected.length === 0) return alert('Select at least one skill');
     setSaving(true);
+    setError('');
     try {
-      await api.post('/worker/skills', {
+      const result = await securePost('/worker/skills', {
         skills: selected.map(id => ({ categoryId: id }))
       });
-      alert('Skills updated!');
+      if (result?.sentinelVerdict === 'BLOCK' || result?.sentinelVerdict === 'TERMINATE_SESSION') {
+        setError('Action blocked due to unusual activity.');
+        return;
+      }
       navigate('/worker/profile');
     } catch (err) {
-      alert('Failed to save skills');
+      setError('Failed to save skills. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -75,6 +81,7 @@ export default function SkillSelection() {
       </div>
 
       <div className="p-6 border-t border-gray-100">
+        {error && <p className="text-red-500 text-sm font-semibold text-center mb-3">{error}</p>}
         <button 
           onClick={handleSave}
           disabled={saving || selected.length === 0}

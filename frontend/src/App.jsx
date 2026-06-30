@@ -47,7 +47,7 @@ import KycUpload from './components/worker/KycUpload';
 import SkillSelection from './components/worker/SkillSelection';
 import Settings from './components/worker/Settings';
 
-// Admin Imports
+
 import AdminLayout from './pages/AdminLayout';
 import AdminDashboard from './components/admin/Dashboard';
 import AdminCustomers from './components/admin/Customers';
@@ -68,7 +68,7 @@ function RoleBootstrap({ role, children }) {
   useMemo(() => {
     const auth = store.getState().auth;
     const currentRole = auth.role;
-    
+
     // If we are authenticated but the role is different, we must logout to prevent 403s
     if (auth.isAuthenticated && currentRole && currentRole !== role) {
       localStorage.removeItem('lt_token'); // Clear the JWT
