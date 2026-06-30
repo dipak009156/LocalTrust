@@ -6,8 +6,11 @@ const morgan  = require('morgan');
 const app = express();
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
+const rawFrontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+const frontendUrl = rawFrontendUrl.endsWith('/') ? rawFrontendUrl.slice(0, -1) : rawFrontendUrl;
+
 app.use(cors({
-    origin:            process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin:            frontendUrl,
     credentials:       true,
     allowedHeaders:    ['Content-Type', 'Authorization', 'x-session-id'],
 }));
